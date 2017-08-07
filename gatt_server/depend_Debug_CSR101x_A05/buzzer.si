@@ -1,0 +1,2037 @@
+   1                 		.file	"buzzer.c"
+   2                 		.variant xap2+
+   3                 	
+   4                 		.small
+   5                 	
+   6                 		.section	.debug_abbrev,"",@progbits
+   7                 	.Ldebug_abbrev0:
+   8                 		.section	.debug_info,"",@progbits
+   9                 	.Ldebug_info0:
+  10                 		.section	.debug_line,"",@progbits
+  11                 	.Ldebug_line0:
+  12 0000 00 00 00 00 		.text
+  12      00 02 00 00 
+  12      00 00 01 01 
+  12      FB 0E 0D 00 
+  12      01 01 01 01 
+  13                 	.Ltext0:
+  14                 		.section	.text.appBuzzerTimerHandler,"ax",@progbits
+  15                 		.type	appBuzzerTimerHandler, @function
+  16                 	appBuzzerTimerHandler:
+  17                 	.LFB2:
+  18                 		.file 1 "buzzer.c"
+   0:buzzer.c      **** /******************************************************************************
+   1:buzzer.c      ****  *  Copyright Cambridge Silicon Radio Limited 2013-2014
+   2:buzzer.c      ****  *  Part of CSR uEnergy SDK 2.3.0
+   3:buzzer.c      ****  *  Application version 2.3.0.0
+   4:buzzer.c      ****  *
+   5:buzzer.c      ****  *  FILE
+   6:buzzer.c      ****  *      buzzer.c
+   7:buzzer.c      ****  *
+   8:buzzer.c      ****  *  DESCRIPTION
+   9:buzzer.c      ****  *      This file defines routines for accessing buzzer functionality.
+  10:buzzer.c      ****  *
+  11:buzzer.c      ****  *****************************************************************************/
+  12:buzzer.c      **** 
+  13:buzzer.c      **** /*============================================================================*
+  14:buzzer.c      ****  *  SDK Header Files
+  15:buzzer.c      ****  *============================================================================*/
+  16:buzzer.c      **** 
+  17:buzzer.c      **** #include <pio.h>            /* PIO configuration and control functions */
+  18:buzzer.c      **** #include <pio_ctrlr.h>      /* Access to the PIO controller */
+  19:buzzer.c      **** #include <timer.h>          /* Chip timer functions */
+  20:buzzer.c      **** 
+  21:buzzer.c      **** /*============================================================================*
+  22:buzzer.c      ****  *  Local Header Files
+  23:buzzer.c      ****  *============================================================================*/
+  24:buzzer.c      **** 
+  25:buzzer.c      **** #include "user_config.h"    /* User configuration */
+  26:buzzer.c      **** #include "buzzer.h"         /* Interface to this file */
+  27:buzzer.c      **** #include "hw_access.h"      /* Hardware access */
+  28:buzzer.c      **** #include "gatt_server.h"    /* Definitions used throughout the GATT server */
+  29:buzzer.c      **** 
+  30:buzzer.c      **** /* Only compile this file if the buzzer code has been requested */
+  31:buzzer.c      **** #ifdef ENABLE_BUZZER
+  32:buzzer.c      **** 
+  33:buzzer.c      **** /*============================================================================*
+  34:buzzer.c      ****  *  Private Definitions
+  35:buzzer.c      ****  *============================================================================*/
+  36:buzzer.c      **** 
+  37:buzzer.c      **** /* Setup PIOs
+  38:buzzer.c      ****  *  PIO3    Buzzer
+  39:buzzer.c      ****  */
+  40:buzzer.c      **** #define BUZZER_PIO              (3)
+  41:buzzer.c      **** 
+  42:buzzer.c      **** #define BUZZER_PIO_MASK         (PIO_BIT_MASK(BUZZER_PIO))
+  43:buzzer.c      **** 
+  44:buzzer.c      **** /* The index (0-3) of the PWM unit to be configured */
+  45:buzzer.c      **** #define BUZZER_PWM_INDEX_0      (0)
+  46:buzzer.c      **** 
+  47:buzzer.c      **** /* PWM parameters for Buzzer */
+  48:buzzer.c      **** 
+  49:buzzer.c      **** /* Dull on. off and hold times */
+  50:buzzer.c      **** #define DULL_BUZZ_ON_TIME       (2)    /* 60us */
+  51:buzzer.c      **** #define DULL_BUZZ_OFF_TIME      (15)   /* 450us */
+  52:buzzer.c      **** #define DULL_BUZZ_HOLD_TIME     (0)
+  53:buzzer.c      **** 
+  54:buzzer.c      **** /* Bright on, off and hold times */
+  55:buzzer.c      **** #define BRIGHT_BUZZ_ON_TIME     (2)    /* 60us */
+  56:buzzer.c      **** #define BRIGHT_BUZZ_OFF_TIME    (15)   /* 450us */
+  57:buzzer.c      **** #define BRIGHT_BUZZ_HOLD_TIME   (0)    /* 0us */
+  58:buzzer.c      **** 
+  59:buzzer.c      **** #define BUZZ_RAMP_RATE          (0xFF)
+  60:buzzer.c      **** 
+  61:buzzer.c      **** /* TIMER values for Buzzer */
+  62:buzzer.c      **** #define SHORT_BEEP_TIMER_VALUE  (100* MILLISECOND)
+  63:buzzer.c      **** #define LONG_BEEP_TIMER_VALUE   (500* MILLISECOND)
+  64:buzzer.c      **** #define BEEP_GAP_TIMER_VALUE    (25* MILLISECOND)
+  65:buzzer.c      **** 
+  66:buzzer.c      **** /*============================================================================*
+  67:buzzer.c      ****  *  Public data types
+  68:buzzer.c      ****  *============================================================================*/
+  69:buzzer.c      **** 
+  70:buzzer.c      **** /* Buzzer data structure */
+  71:buzzer.c      **** typedef struct _BUZZER_DATA_T
+  72:buzzer.c      **** {
+  73:buzzer.c      **** 
+  74:buzzer.c      ****     /* Buzzer timer ID */
+  75:buzzer.c      ****     timer_id                    buzzer_tid;
+  76:buzzer.c      **** 
+  77:buzzer.c      ****     /* Current beep type */
+  78:buzzer.c      ****     buzzer_beep_type            beep_type;
+  79:buzzer.c      **** 
+  80:buzzer.c      ****     /* Beep counter. This variable will be initialised to 0 on beep start and
+  81:buzzer.c      ****      * will increment at every beep sound.
+  82:buzzer.c      ****      */
+  83:buzzer.c      ****     uint16                      beep_count;
+  84:buzzer.c      **** 
+  85:buzzer.c      **** } BUZZER_DATA_T;
+  86:buzzer.c      **** 
+  87:buzzer.c      **** /*============================================================================*
+  88:buzzer.c      ****  *  Private data
+  89:buzzer.c      ****  *============================================================================*/
+  90:buzzer.c      **** 
+  91:buzzer.c      **** /* Buzzer data instance */
+  92:buzzer.c      **** static BUZZER_DATA_T            g_buzz_data;
+  93:buzzer.c      **** 
+  94:buzzer.c      **** /*============================================================================*
+  95:buzzer.c      ****  *  Private Function Prototypes
+  96:buzzer.c      ****  *===========================================================================*/
+  97:buzzer.c      **** 
+  98:buzzer.c      **** /* Control buzzer at timer expiry */
+  99:buzzer.c      **** static void appBuzzerTimerHandler(timer_id tid);
+ 100:buzzer.c      **** 
+ 101:buzzer.c      **** /*============================================================================*
+ 102:buzzer.c      ****  *  Private Function Implementations
+ 103:buzzer.c      ****  *============================================================================*/
+ 104:buzzer.c      **** 
+ 105:buzzer.c      **** /*----------------------------------------------------------------------------*
+ 106:buzzer.c      ****  *  NAME
+ 107:buzzer.c      ****  *      appBuzzerTimerHandler
+ 108:buzzer.c      ****  *
+ 109:buzzer.c      ****  *  DESCRIPTION
+ 110:buzzer.c      ****  *      This function is used to stop the Buzzer at the expiry of timer.
+ 111:buzzer.c      ****  *
+ 112:buzzer.c      ****  *  PARAMETERS
+ 113:buzzer.c      ****  *      tid [in]                ID of expired timer (unused)
+ 114:buzzer.c      ****  *
+ 115:buzzer.c      ****  *  RETURNS
+ 116:buzzer.c      ****  *      Nothing
+ 117:buzzer.c      ****  *----------------------------------------------------------------------------*/
+ 118:buzzer.c      **** static void appBuzzerTimerHandler(timer_id tid)
+ 119:buzzer.c      **** {
+  19                 	er	#0x0007
+  20 0000 07 0B       	.LCFI0:
+  21                 		st	AL,@(0x0004,Y)
+  22 0001 04 27       		.loc 1 122 0
+ 120:buzzer.c      ****     /* Duration of next timer */
+ 121:buzzer.c      ****     uint32 beep_timer = SHORT_BEEP_TIMER_VALUE;
+  23                 	AL,#0x0001
+  24 0002 01 14       		st	AL,@(0x0002,Y)
+  25 0003 02 27       		ld	AL,#0x86a0
+  26 0004 87 00 A0 14 		st	AL,@(0x0003,Y)
+  27 0006 03 27       		.loc 1 125 0
+ 122:buzzer.c      **** 
+ 123:buzzer.c      ****     /* The buzzer timer has just expired, so reset the timer ID */
+ 124:buzzer.c      ****     g_buzz_data.buzzer_tid = TIMER_INVALID;
+  28                 	L,#0x0000
+  29 0007 00 14       		st	AL,@g_buzz_data
+  30 0008 00 00 00 25 		.loc 1 127 0
+ 125:buzzer.c      **** 
+ 126:buzzer.c      ****     switch(g_buzz_data.beep_type)
+  31                 		AL,@g_buzz_data+0x0001
+  32 000a 00 00 00 15 		st	AL,@(0x0005,Y)
+  33 000c 05 27       		ld	AL,@(0x0005,Y)
+  34 000d 05 17       		cmp	AL,#0x0003
+  35 000e 03 84       		beq	.L4
+  36 000f 00 00 00 00 		ld	AL,@(0x0005,Y)
+  36      00 F4 
+  37 0012 05 17       		cmp	AL,#0x0004
+  38 0013 04 84       		bcc	.L6
+  39 0014 00 00 00 00 		ld	AL,@(0x0005,Y)
+  39      00 F8 
+  40 0017 05 17       		cmp	AL,#0x0001
+  41 0018 01 84       		bcs	.L2
+  42 0019 00 00 00 00 		bra	.L18
+  42      00 FC 
+  43 001c 00 00 00 00 	.L6:
+  43      00 E0 
+  44                 		ld	AL,@(0x0005,Y)
+  45 001f 05 17       		cmp	AL,#0x0004
+  46 0020 04 84       		beq	.L5
+  47 0021 00 00 00 00 		bra	.L2
+  47      00 F4 
+  48 0024 00 00 00 00 	.L18:
+  48      00 E0 
+  49                 		.loc 1 132 0
+ 127:buzzer.c      ****     {
+ 128:buzzer.c      ****         case buzzer_beep_short: /* FALLTHROUGH */
+ 129:buzzer.c      ****         case buzzer_beep_long:
+ 130:buzzer.c      ****         {
+ 131:buzzer.c      ****             g_buzz_data.beep_type = buzzer_beep_off;
+  50                 	AL,@g_buzz_data+0x0001
+  51 0027 00 14       		.loc 1 135 0
+  52 0028 00 00 00 25 		ld	AL,#0x0000
+ 132:buzzer.c      **** 
+ 133:buzzer.c      ****             /* Disable buzzer */
+ 134:buzzer.c      ****             PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+  53                 		AH,#0x0000
+  54 002a 00 14       		bsr	PioEnablePWM
+  55 002b 00 10       		bra	.L7
+  56 002c 00 00 00 00 	.L4:
+  56      00 9C 
+  57 002f 00 00 00 00 		.loc 1 141 0
+  57      00 E0 
+  58                 		ld	AL,@g_buzz_data+0x0002
+ 135:buzzer.c      ****         }
+ 136:buzzer.c      ****         break;
+ 137:buzzer.c      **** 
+ 138:buzzer.c      ****         case buzzer_beep_twice:
+ 139:buzzer.c      ****         {
+ 140:buzzer.c      ****             if(g_buzz_data.beep_count == 0)
+  59                 	$XAP_AL
+  60 0032 00 00 00 15 		bne	.L8
+  61 0034 00 00 00 99 		.loc 1 146 0
+  62 0036 00 00 00 00 		ld	AL,#0x0001
+  62      00 F0 
+ 141:buzzer.c      ****             {
+ 142:buzzer.c      ****                 /* First beep sounded. Increment the beep count and start the
+ 143:buzzer.c      ****                  * silent gap.
+ 144:buzzer.c      ****                  */
+ 145:buzzer.c      ****                 g_buzz_data.beep_count = 1;
+  63                 	AL,@g_buzz_data+0x0002
+  64 0039 01 14       		.loc 1 149 0
+  65 003a 00 00 00 25 		ld	AL,#0x0000
+ 146:buzzer.c      **** 
+ 147:buzzer.c      ****                 /* Disable buzzer */
+ 148:buzzer.c      ****                 PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+  66                 		AH,#0x0000
+  67 003c 00 14       		bsr	PioEnablePWM
+  68 003d 00 10       		.loc 1 152 0
+  69 003e 00 00 00 00 		ld	AL,#0x0000
+  69      00 9C 
+ 149:buzzer.c      **** 
+ 150:buzzer.c      ****                 /* Time gap between two beeps */
+ 151:buzzer.c      ****                 beep_timer = BEEP_GAP_TIMER_VALUE;
+  70                 	AL,@(0x0002,Y)
+  71 0041 00 14       		ld	AL,#0x61a8
+  72 0042 02 27       		st	AL,@(0x0003,Y)
+  73 0043 62 00 A8 14 		bra	.L7
+  74 0045 03 27       	.L8:
+  75 0046 00 00 00 00 		.loc 1 154 0
+  75      00 E0 
+  76                 		ld	AL,@g_buzz_data+0x0002
+ 152:buzzer.c      ****             }
+ 153:buzzer.c      ****             else if(g_buzz_data.beep_count == 1)
+  77                 	,#0x0001
+  78 0049 00 00 00 15 		bne	.L10
+  79 004b 01 84       		.loc 1 157 0
+  80 004c 00 00 00 00 		ld	AL,#0x0002
+  80      00 F0 
+ 154:buzzer.c      ****             {
+ 155:buzzer.c      ****                 /* Sound the second beep and increment the beep count. */
+ 156:buzzer.c      ****                 g_buzz_data.beep_count = 2;
+  81                 	AL,@g_buzz_data+0x0002
+  82 004f 02 14       		.loc 1 160 0
+  83 0050 00 00 00 25 		ld	AL,#0x0000
+ 157:buzzer.c      **** 
+ 158:buzzer.c      ****                 /* Enable buzzer */
+ 159:buzzer.c      ****                 PioEnablePWM(BUZZER_PWM_INDEX_0, TRUE);
+  84                 		AH,#0x0001
+  85 0052 00 14       		bsr	PioEnablePWM
+  86 0053 01 10       		.loc 1 163 0
+  87 0054 00 00 00 00 		ld	AL,#0x0001
+  87      00 9C 
+ 160:buzzer.c      **** 
+ 161:buzzer.c      ****                 /* Start another short beep */
+ 162:buzzer.c      ****                 beep_timer = SHORT_BEEP_TIMER_VALUE;
+  88                 	AL,@(0x0002,Y)
+  89 0057 01 14       		ld	AL,#0x86a0
+  90 0058 02 27       		st	AL,@(0x0003,Y)
+  91 0059 87 00 A0 14 		bra	.L7
+  92 005b 03 27       	.L10:
+  93 005c 00 00 00 00 		.loc 1 170 0
+  93      00 E0 
+  94                 		ld	AL,#0x0000
+ 163:buzzer.c      ****             }
+ 164:buzzer.c      ****             else
+ 165:buzzer.c      ****             {
+ 166:buzzer.c      ****                 /* Two beeps have been sounded. Stop buzzer now and reset the 
+ 167:buzzer.c      ****                  * beep count.
+ 168:buzzer.c      ****                  */
+ 169:buzzer.c      ****                 g_buzz_data.beep_count = 0;
+  95                 	@g_buzz_data+0x0002
+  96 005f 00 14       		.loc 1 173 0
+  97 0060 00 00 00 25 		ld	AL,#0x0000
+ 170:buzzer.c      **** 
+ 171:buzzer.c      ****                 /* Disable buzzer */
+ 172:buzzer.c      ****                 PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+  98                 		AH,#0x0000
+  99 0062 00 14       		bsr	PioEnablePWM
+ 100 0063 00 10       		.loc 1 175 0
+ 101 0064 00 00 00 00 		ld	AL,#0x0000
+ 101      00 9C 
+ 173:buzzer.c      **** 
+ 174:buzzer.c      ****                 g_buzz_data.beep_type = buzzer_beep_off;
+ 102                 	AL,@g_buzz_data+0x0001
+ 103 0067 00 14       		bra	.L7
+ 104 0068 00 00 00 25 	.L5:
+ 105 006a 00 00 00 00 		.loc 1 182 0
+ 105      00 E0 
+ 106                 		ld	AL,@g_buzz_data+0x0002
+ 175:buzzer.c      ****             }
+ 176:buzzer.c      ****         }
+ 177:buzzer.c      ****         break;
+ 178:buzzer.c      **** 
+ 179:buzzer.c      ****         case buzzer_beep_thrice:
+ 180:buzzer.c      ****         {
+ 181:buzzer.c      ****             if(g_buzz_data.beep_count == 0 ||
+ 107                 	@$XAP_AL
+ 108 006d 00 00 00 15 		beq	.L11
+ 109 006f 00 00 00 99 		ld	AL,@g_buzz_data+0x0002
+ 110 0071 00 00 00 00 		cmp	AL,#0x0002
+ 110      00 F4 
+ 111 0074 00 00 00 15 		bne	.L12
+ 112 0076 02 84       	.L11:
+ 113 0077 00 00 00 00 		.loc 1 186 0
+ 113      00 F0 
+ 114                 		ld	AL,@g_buzz_data+0x0002
+ 182:buzzer.c      ****                g_buzz_data.beep_count == 2)
+ 183:buzzer.c      ****             {
+ 184:buzzer.c      ****                 /* Start the silent gap*/
+ 185:buzzer.c      ****                 ++g_buzz_data.beep_count;
+ 115                 	#0x0001
+ 116 007a 00 00 00 15 		st	AL,@g_buzz_data+0x0002
+ 117 007c 01 34       		.loc 1 189 0
+ 118 007d 00 00 00 25 		ld	AL,#0x0000
+ 186:buzzer.c      **** 
+ 187:buzzer.c      ****                 /* Disable buzzer */
+ 188:buzzer.c      ****                 PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+ 119                 	AH,#0x0000
+ 120 007f 00 14       		bsr	PioEnablePWM
+ 121 0080 00 10       		.loc 1 192 0
+ 122 0081 00 00 00 00 		ld	AL,#0x0000
+ 122      00 9C 
+ 189:buzzer.c      **** 
+ 190:buzzer.c      ****                 /* Time gap between two beeps */
+ 191:buzzer.c      ****                 beep_timer = BEEP_GAP_TIMER_VALUE;
+ 123                 	AL,@(0x0002,Y)
+ 124 0084 00 14       		ld	AL,#0x61a8
+ 125 0085 02 27       		st	AL,@(0x0003,Y)
+ 126 0086 62 00 A8 14 		bra	.L7
+ 127 0088 03 27       	.L12:
+ 128 0089 00 00 00 00 		.loc 1 194 0
+ 128      00 E0 
+ 129                 		ld	AL,@g_buzz_data+0x0002
+ 192:buzzer.c      ****             }
+ 193:buzzer.c      ****             else if(g_buzz_data.beep_count == 1 ||
+ 130                 	,#0x0001
+ 131 008c 00 00 00 15 		beq	.L14
+ 132 008e 01 84       		ld	AL,@g_buzz_data+0x0002
+ 133 008f 00 00 00 00 		cmp	AL,#0x0003
+ 133      00 F4 
+ 134 0092 00 00 00 15 		bne	.L15
+ 135 0094 03 84       	.L14:
+ 136 0095 00 00 00 00 		.loc 1 198 0
+ 136      00 F0 
+ 137                 		ld	AL,@g_buzz_data+0x0002
+ 194:buzzer.c      ****                     g_buzz_data.beep_count == 3)
+ 195:buzzer.c      ****             {
+ 196:buzzer.c      ****                 /* Start the beep sounding part. */
+ 197:buzzer.c      ****                 ++g_buzz_data.beep_count;
+ 138                 	#0x0001
+ 139 0098 00 00 00 15 		st	AL,@g_buzz_data+0x0002
+ 140 009a 01 34       		.loc 1 201 0
+ 141 009b 00 00 00 25 		ld	AL,#0x0000
+ 198:buzzer.c      **** 
+ 199:buzzer.c      ****                 /* Enable buzzer */
+ 200:buzzer.c      ****                 PioEnablePWM(BUZZER_PWM_INDEX_0, TRUE);
+ 142                 	AH,#0x0001
+ 143 009d 00 14       		bsr	PioEnablePWM
+ 144 009e 01 10       		.loc 1 203 0
+ 145 009f 00 00 00 00 		ld	AL,#0x0001
+ 145      00 9C 
+ 201:buzzer.c      **** 
+ 202:buzzer.c      ****                 beep_timer = SHORT_BEEP_TIMER_VALUE;
+ 146                 	AL,@(0x0002,Y)
+ 147 00a2 01 14       		ld	AL,#0x86a0
+ 148 00a3 02 27       		st	AL,@(0x0003,Y)
+ 149 00a4 87 00 A0 14 		bra	.L7
+ 150 00a6 03 27       	.L15:
+ 151 00a7 00 00 00 00 		.loc 1 208 0
+ 151      00 E0 
+ 152                 		ld	AL,#0x0000
+ 203:buzzer.c      ****             }
+ 204:buzzer.c      ****             else
+ 205:buzzer.c      ****             {
+ 206:buzzer.c      ****                 /* Three beeps have been sounded. Stop the buzzer. */
+ 207:buzzer.c      ****                 g_buzz_data.beep_count = 0;
+ 153                 	@g_buzz_data+0x0002
+ 154 00aa 00 14       		.loc 1 211 0
+ 155 00ab 00 00 00 25 		ld	AL,#0x0000
+ 208:buzzer.c      **** 
+ 209:buzzer.c      ****                 /* Disable buzzer */
+ 210:buzzer.c      ****                 PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+ 156                 		AH,#0x0000
+ 157 00ad 00 14       		bsr	PioEnablePWM
+ 158 00ae 00 10       		.loc 1 213 0
+ 159 00af 00 00 00 00 		ld	AL,#0x0000
+ 159      00 9C 
+ 211:buzzer.c      **** 
+ 212:buzzer.c      ****                 g_buzz_data.beep_type = buzzer_beep_off;
+ 160                 	AL,@g_buzz_data+0x0001
+ 161 00b2 00 14       		bra	.L7
+ 162 00b3 00 00 00 25 	.L2:
+ 163 00b5 00 00 00 00 		.loc 1 221 0
+ 163      00 E0 
+ 164                 		ld	AL,#0x000b
+ 213:buzzer.c      ****             }
+ 214:buzzer.c      ****         }
+ 215:buzzer.c      ****         break;
+ 216:buzzer.c      **** 
+ 217:buzzer.c      ****         default:
+ 218:buzzer.c      ****         {
+ 219:buzzer.c      ****             /* No such beep type */
+ 220:buzzer.c      ****             ReportPanic(app_panic_unexpected_beep_type);
+ 165                 	ReportPanic
+ 166 00b8 0B 14       	.L7:
+ 167 00b9 00 00 00 00 		.loc 1 226 0
+ 167      00 9C 
+ 168                 		ld	AL,@g_buzz_data+0x0001
+ 221:buzzer.c      ****         }
+ 222:buzzer.c      ****         break;
+ 223:buzzer.c      ****     }
+ 224:buzzer.c      **** 
+ 225:buzzer.c      ****     if(g_buzz_data.beep_type != buzzer_beep_off)
+ 169                 		@$XAP_AL
+ 170 00bc 00 00 00 15 		beq	.L17
+ 171 00be 00 00 00 99 		.loc 1 229 0
+ 172 00c0 00 00 00 00 		ld	AL,#appBuzzerTimerHandler
+ 172      00 F4 
+ 226:buzzer.c      ****     {
+ 227:buzzer.c      ****         /* Start the timer */
+ 228:buzzer.c      ****         g_buzz_data.buzzer_tid = TimerCreate(beep_timer, TRUE, 
+ 173                 	AH,#0x0001
+ 174 00c3 00 00 00 14 		st	AH,@(0,Y)
+ 175 00c5 01 10       		st	AL,@(0x0001,Y)
+ 176 00c6 00 23       		ld	AL,@(0x0003,Y)
+ 177 00c7 01 27       		ld	AH,@(0x0002,Y)
+ 178 00c8 03 17       		bsr	TimerCreate
+ 179 00c9 02 13       		st	AL,@g_buzz_data
+ 180 00ca 00 00 00 00 	.L17:
+ 180      00 9C 
+ 181 00cd 00 00 00 25 		.loc 1 232 0
+ 182                 		leave	#0x0007
+ 229:buzzer.c      ****                                                appBuzzerTimerHandler);
+ 230:buzzer.c      ****     }
+ 231:buzzer.c      **** }
+ 183                 	ize	appBuzzerTimerHandler, .-appBuzzerTimerHandler
+ 184 00cf 07 0F       		.equ	__size_of_appBuzzerTimerHandler,. - appBuzzerTimerHandler
+ 185                 		.section	.text.BuzzerInitHardware,"ax",@progbits
+ 186                 		.global	BuzzerInitHardware
+ 187                 		.type	BuzzerInitHardware, @function
+ 188                 	BuzzerInitHardware:
+ 189                 	.LFB3:
+ 190                 		.loc 1 252 0
+ 191                 		enter	#0x0008
+ 192                 	.LCFI1:
+ 232:buzzer.c      **** 
+ 233:buzzer.c      **** /*============================================================================*
+ 234:buzzer.c      ****  *  Public Function Implementations
+ 235:buzzer.c      ****  *============================================================================*/
+ 236:buzzer.c      **** 
+ 237:buzzer.c      **** /*----------------------------------------------------------------------------*
+ 238:buzzer.c      ****  *  NAME
+ 239:buzzer.c      ****  *      BuzzerInitHardware
+ 240:buzzer.c      ****  *
+ 241:buzzer.c      ****  *  DESCRIPTION
+ 242:buzzer.c      ****  *      This function initialises the buzzer hardware.
+ 243:buzzer.c      ****  *
+ 244:buzzer.c      ****  *  PARAMETERS
+ 245:buzzer.c      ****  *      None
+ 246:buzzer.c      ****  *
+ 247:buzzer.c      ****  *  RETURNS
+ 248:buzzer.c      ****  *      Nothing
+ 249:buzzer.c      ****  *----------------------------------------------------------------------------*/
+ 250:buzzer.c      **** extern void BuzzerInitHardware(void)
+ 251:buzzer.c      **** {
+ 193                 	4 0
+ 194 0000 08 0B       		ld	AL,#0x0004
+ 195                 		st	AL,@(0,Y)
+ 252:buzzer.c      ****     /* Configure the buzzer PIO to use PWM. */
+ 253:buzzer.c      ****     PioSetModes(BUZZER_PIO_MASK, pio_mode_pwm0);
+ 196                 		AH,#0x0000
+ 197 0001 04 14       		ld	AL,#0x0008
+ 198 0002 00 27       		bsr	PioSetModes
+ 199 0003 00 10       		.loc 1 257 0
+ 200 0004 08 14       		ld	AL,#0x0002
+ 201 0005 00 00 00 00 		st	AL,@(0,Y)
+ 201      00 9C 
+ 254:buzzer.c      **** 
+ 255:buzzer.c      ****     /* Configure the PWM for buzzer ON OFF values */
+ 256:buzzer.c      ****     PioConfigPWM(BUZZER_PWM_INDEX_0, pio_pwm_mode_push_pull, DULL_BUZZ_ON_TIME,
+ 202                 	,#0x000f
+ 203 0008 02 14       		st	AL,@(0x0001,Y)
+ 204 0009 00 27       		ld	AL,#0x0000
+ 205 000a 0F 14       		st	AL,@(0x0002,Y)
+ 206 000b 01 27       		ld	AL,#0x0002
+ 207 000c 00 14       		st	AL,@(0x0003,Y)
+ 208 000d 02 27       		ld	AL,#0x000f
+ 209 000e 02 14       		st	AL,@(0x0004,Y)
+ 210 000f 03 27       		ld	AL,#0x0000
+ 211 0010 0F 14       		st	AL,@(0x0005,Y)
+ 212 0011 04 27       		ld	AL,#0x00ff
+ 213 0012 00 14       		st	AL,@(0x0006,Y)
+ 214 0013 05 27       		ld	AL,#0x0000
+ 215 0014 01 00 FF 14 		ld	AH,#0x0000
+ 216 0016 06 27       		bsr	PioConfigPWM
+ 217 0017 00 14       		.loc 1 262 0
+ 218 0018 00 10       		ld	AL,#0x0000
+ 219 0019 00 00 00 00 		ld	AH,#0x0000
+ 219      00 9C 
+ 257:buzzer.c      ****                  DULL_BUZZ_OFF_TIME, DULL_BUZZ_HOLD_TIME, BRIGHT_BUZZ_ON_TIME,
+ 258:buzzer.c      ****                  BRIGHT_BUZZ_OFF_TIME, BRIGHT_BUZZ_HOLD_TIME, BUZZ_RAMP_RATE);
+ 259:buzzer.c      **** 
+ 260:buzzer.c      ****     /* Disable buzzer for the time being. */
+ 261:buzzer.c      ****     PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+ 220                 		.loc 1 264 0
+ 221 001c 00 14       		leave	#0x0008
+ 222 001d 00 10       	.LFE3:
+ 223 001e 00 00 00 00 		.size	BuzzerInitHardware, .-BuzzerInitHardware
+ 223      00 9C 
+ 262:buzzer.c      **** 
+ 263:buzzer.c      **** }
+ 224                 	obal	__size_of_BuzzerInitHardware
+ 225 0021 08 0F       		.equ	__size_of_BuzzerInitHardware,. - BuzzerInitHardware
+ 226                 		.section	.text.BuzzerInitData,"ax",@progbits
+ 227                 		.global	BuzzerInitData
+ 228                 		.type	BuzzerInitData, @function
+ 229                 	BuzzerInitData:
+ 230                 	.LFB4:
+ 231                 		.loc 1 282 0
+ 232                 		.loc 1 284 0
+ 233                 		ld	AL,#0x0000
+ 234                 		st	AL,@g_buzz_data
+ 264:buzzer.c      **** 
+ 265:buzzer.c      **** /*----------------------------------------------------------------------------*
+ 266:buzzer.c      ****  *  NAME
+ 267:buzzer.c      ****  *      BuzzerInitData
+ 268:buzzer.c      ****  *
+ 269:buzzer.c      ****  *  DESCRIPTION
+ 270:buzzer.c      ****  *      This function initialises the buzzer data to a known state. It is
+ 271:buzzer.c      ****  *      intended to be called once, for example after a power-on reset or HCI
+ 272:buzzer.c      ****  *      reset.
+ 273:buzzer.c      ****  *
+ 274:buzzer.c      ****  *  PARAMETERS
+ 275:buzzer.c      ****  *      None
+ 276:buzzer.c      ****  *
+ 277:buzzer.c      ****  *  RETURNS
+ 278:buzzer.c      ****  *      Nothing
+ 279:buzzer.c      ****  *----------------------------------------------------------------------------*/
+ 280:buzzer.c      **** extern void BuzzerInitData(void)
+ 281:buzzer.c      **** {
+ 235                 	 0
+ 282:buzzer.c      ****     /* Initialise buzzer timer */
+ 283:buzzer.c      ****     g_buzz_data.buzzer_tid = TIMER_INVALID;
+ 236                 	bra	0,X
+ 237 0000 00 14       	.LFE4:
+ 238 0001 00 00 00 25 		.size	BuzzerInitData, .-BuzzerInitData
+ 284:buzzer.c      ****     
+ 285:buzzer.c      ****     /* The remaining values in the data structure are initialised by
+ 286:buzzer.c      ****      * SoundBuzzer.
+ 287:buzzer.c      ****      */
+ 288:buzzer.c      **** }
+ 239                 	lobal	__size_of_BuzzerInitData
+ 240 0003 00 E2       		.equ	__size_of_BuzzerInitData,. - BuzzerInitData
+ 241                 		.section	.text.BuzzerResetData,"ax",@progbits
+ 242                 		.global	BuzzerResetData
+ 243                 		.type	BuzzerResetData, @function
+ 244                 	BuzzerResetData:
+ 245                 	.LFB5:
+ 246                 		.loc 1 307 0
+ 247                 		enter	#0x0001
+ 248                 	.LCFI2:
+ 249                 		.loc 1 309 0
+ 289:buzzer.c      **** 
+ 290:buzzer.c      **** /*----------------------------------------------------------------------------*
+ 291:buzzer.c      ****  *  NAME
+ 292:buzzer.c      ****  *      BuzzerResetData
+ 293:buzzer.c      ****  *
+ 294:buzzer.c      ****  *  DESCRIPTION
+ 295:buzzer.c      ****  *      This function resets the buzzer data. It is intended to be called when
+ 296:buzzer.c      ****  *      the data needs to be reset to a clean state, for example, whenever a
+ 297:buzzer.c      ****  *      device connects or disconnects.
+ 298:buzzer.c      ****  *
+ 299:buzzer.c      ****  *  PARAMETERS
+ 300:buzzer.c      ****  *      None
+ 301:buzzer.c      ****  *
+ 302:buzzer.c      ****  *  RETURNS
+ 303:buzzer.c      ****  *      Nothing
+ 304:buzzer.c      ****  *----------------------------------------------------------------------------*/
+ 305:buzzer.c      **** extern void BuzzerResetData(void)
+ 306:buzzer.c      **** {
+ 250                 	uzz_data
+ 251 0000 01 0B       		tst	@$XAP_AL
+ 252                 		beq	.L25
+ 307:buzzer.c      ****     /* Delete buzzer timer if running */
+ 308:buzzer.c      ****     if (g_buzz_data.buzzer_tid != TIMER_INVALID)
+ 253                 	oc 1 311 0
+ 254 0001 00 00 00 15 		ld	AL,@g_buzz_data
+ 255 0003 00 00 00 99 		bsr	TimerDelete
+ 256 0005 00 00 00 00 		.loc 1 312 0
+ 256      00 F4 
+ 309:buzzer.c      ****     {
+ 310:buzzer.c      ****         TimerDelete(g_buzz_data.buzzer_tid);
+ 257                 	AL,#0x0000
+ 258 0008 00 00 00 15 		st	AL,@g_buzz_data
+ 259 000a 00 00 00 00 	.L25:
+ 259      00 9C 
+ 311:buzzer.c      ****         g_buzz_data.buzzer_tid = TIMER_INVALID;
+ 260                 	oc 1 316 0
+ 261 000d 00 14       		leave	#0x0001
+ 262 000e 00 00 00 25 	.LFE5:
+ 263                 		.size	BuzzerResetData, .-BuzzerResetData
+ 312:buzzer.c      ****     }
+ 313:buzzer.c      ****     
+ 314:buzzer.c      ****     /* The remaining values in the data structure are reset by SoundBuzzer */
+ 315:buzzer.c      **** }
+ 264                 	obal	__size_of_BuzzerResetData
+ 265 0010 01 0F       		.equ	__size_of_BuzzerResetData,. - BuzzerResetData
+ 266                 		.section	.text.SoundBuzzer,"ax",@progbits
+ 267                 		.global	SoundBuzzer
+ 268                 		.type	SoundBuzzer, @function
+ 269                 	SoundBuzzer:
+ 270                 	.LFB6:
+ 271                 		.loc 1 333 0
+ 272                 		enter	#0x0007
+ 273                 	.LCFI3:
+ 274                 		st	AL,@(0x0004,Y)
+ 316:buzzer.c      **** 
+ 317:buzzer.c      **** /*----------------------------------------------------------------------------*
+ 318:buzzer.c      ****  *  NAME
+ 319:buzzer.c      ****  *      SoundBuzzer
+ 320:buzzer.c      ****  *
+ 321:buzzer.c      ****  *  DESCRIPTION
+ 322:buzzer.c      ****  *      This function is called to trigger beeps of different types, enumerated
+ 323:buzzer.c      ****  *      by 'buzzer_beep_type'.
+ 324:buzzer.c      ****  *
+ 325:buzzer.c      ****  *  PARAMETERS
+ 326:buzzer.c      ****  *      beep_type [in]          Type of beep required
+ 327:buzzer.c      ****  *
+ 328:buzzer.c      ****  *  RETURNS
+ 329:buzzer.c      ****  *      Nothing
+ 330:buzzer.c      ****  *----------------------------------------------------------------------------*/
+ 331:buzzer.c      **** extern void SoundBuzzer(buzzer_beep_type beep_type)
+ 332:buzzer.c      **** {
+ 275                 	 0
+ 276 0000 07 0B       		ld	AL,#0x0001
+ 277                 		st	AL,@(0x0002,Y)
+ 278 0001 04 27       		ld	AL,#0x86a0
+ 333:buzzer.c      ****     /* Duration of beep */
+ 334:buzzer.c      ****     uint32 beep_timer = SHORT_BEEP_TIMER_VALUE;
+ 279                 	AL,@(0x0003,Y)
+ 280 0002 01 14       		.loc 1 338 0
+ 281 0003 02 27       		ld	AL,#0x0000
+ 282 0004 87 00 A0 14 		ld	AH,#0x0000
+ 283 0006 03 27       		bsr	PioEnablePWM
+ 335:buzzer.c      **** 
+ 336:buzzer.c      ****     /* Disable the buzzer and stop the buzzer timer. */
+ 337:buzzer.c      ****     PioEnablePWM(BUZZER_PWM_INDEX_0, FALSE);
+ 284                 	 1 339 0
+ 285 0007 00 14       		ld	AL,@g_buzz_data
+ 286 0008 00 10       		tst	@$XAP_AL
+ 287 0009 00 00 00 00 		beq	.L27
+ 287      00 9C 
+ 338:buzzer.c      ****     if (g_buzz_data.buzzer_tid != TIMER_INVALID)
+ 288                 	c 1 341 0
+ 289 000c 00 00 00 15 		ld	AL,@g_buzz_data
+ 290 000e 00 00 00 99 		bsr	TimerDelete
+ 291 0010 00 00 00 00 		.loc 1 342 0
+ 291      00 F4 
+ 339:buzzer.c      ****     {
+ 340:buzzer.c      ****         TimerDelete(g_buzz_data.buzzer_tid);
+ 292                 	AL,#0x0000
+ 293 0013 00 00 00 15 		st	AL,@g_buzz_data
+ 294 0015 00 00 00 00 	.L27:
+ 294      00 9C 
+ 341:buzzer.c      ****         g_buzz_data.buzzer_tid = TIMER_INVALID;
+ 295                 	oc 1 346 0
+ 296 0018 00 14       		ld	AL,#0x0000
+ 297 0019 00 00 00 25 		st	AL,@g_buzz_data+0x0002
+ 298                 		.loc 1 351 0
+ 342:buzzer.c      ****     }
+ 343:buzzer.c      **** 
+ 344:buzzer.c      ****     /* Reset the beeper state */
+ 345:buzzer.c      ****     g_buzz_data.beep_count = 0;
+ 299                 	AL,@(0x0004,Y)
+ 300 001b 00 14       		st	AL,@g_buzz_data+0x0001
+ 301 001c 00 00 00 25 		.loc 1 353 0
+ 346:buzzer.c      **** 
+ 347:buzzer.c      ****     /* Store the beep type. It will be used on timer expiry to check the type of
+ 348:buzzer.c      ****      * beep being sounded.
+ 349:buzzer.c      ****      */
+ 350:buzzer.c      ****     g_buzz_data.beep_type = beep_type;
+ 302                 		AL,@g_buzz_data+0x0001
+ 303 001e 04 17       		st	AL,@(0x0005,Y)
+ 304 001f 00 00 00 25 		ld	AL,@(0x0005,Y)
+ 351:buzzer.c      **** 
+ 352:buzzer.c      ****     switch(g_buzz_data.beep_type)
+ 305                 	p	AL,#0x0005
+ 306 0021 00 00 00 15 		bcc	.L28
+ 307 0023 05 27       		ld	X,@(0x0005,Y)
+ 308 0024 05 17       		add	X,#.L32
+ 309 0025 05 84       		ld	X,@(0,X)
+ 310 0026 00 00 00 00 		brxl
+ 310      00 F8 
+ 311 0029 05 1B       		.section	.rodata.SoundBuzzer,"a",@progbits
+ 312 002a 00 00 00 38 		.p2align	0
+ 313 002c 00 1A       	.L32:
+ 314 002d FE 09       		.word	.L33-.JTBASE32
+ 315                 		.word	.L30-.JTBASE32
+ 316                 		.word	.L31-.JTBASE32
+ 317                 		.word	.L30-.JTBASE32
+ 318 0000 00 00       		.word	.L30-.JTBASE32
+ 319 0001 00 00       		.section	.text.SoundBuzzer
+ 320 0002 00 00       	.JTBASE32:
+ 321 0003 00 00       	.L30:
+ 322 0004 00 00       		.loc 1 367 0
+ 323                 		ld	AL,#0x0001
+ 324                 		st	AL,@(0x0002,Y)
+ 325                 		ld	AL,#0x86a0
+ 353:buzzer.c      ****     {
+ 354:buzzer.c      ****         case buzzer_beep_off:
+ 355:buzzer.c      ****         {
+ 356:buzzer.c      ****             /* Don't do anything */
+ 357:buzzer.c      ****         }
+ 358:buzzer.c      ****         break;
+ 359:buzzer.c      **** 
+ 360:buzzer.c      ****         case buzzer_beep_short: /* One short beep will be sounded */
+ 361:buzzer.c      ****             /* FALLTHROUGH */
+ 362:buzzer.c      ****         case buzzer_beep_twice: /* Two short beeps will be sounded */
+ 363:buzzer.c      ****             /* FALLTHROUGH */
+ 364:buzzer.c      ****         case buzzer_beep_thrice: /* Three short beeps will be sounded */
+ 365:buzzer.c      ****         {
+ 366:buzzer.c      ****             beep_timer = SHORT_BEEP_TIMER_VALUE;
+ 326                 	ra	.L33
+ 327 002e 01 14       	.L31:
+ 328 002f 02 27       		.loc 1 374 0
+ 329 0030 87 00 A0 14 		ld	AL,#0x0007
+ 330 0032 03 27       		st	AL,@(0x0002,Y)
+ 331 0033 00 00 00 00 		ld	AL,#0xa120
+ 331      00 E0 
+ 332                 		st	AL,@(0x0003,Y)
+ 367:buzzer.c      ****         }
+ 368:buzzer.c      ****         break;
+ 369:buzzer.c      **** 
+ 370:buzzer.c      ****         case buzzer_beep_long:
+ 371:buzzer.c      ****         {
+ 372:buzzer.c      ****             /* One long beep will be sounded */
+ 373:buzzer.c      ****             beep_timer = LONG_BEEP_TIMER_VALUE;
+ 333                 	33
+ 334 0036 07 14       	.L28:
+ 335 0037 02 27       		.loc 1 381 0
+ 336 0038 A1 00 20 14 		ld	AL,#0x000b
+ 337 003a 03 27       		bsr	ReportPanic
+ 338 003b 00 00 00 00 	.L33:
+ 338      00 E0 
+ 339                 		.loc 1 386 0
+ 374:buzzer.c      ****         }
+ 375:buzzer.c      ****         break;
+ 376:buzzer.c      **** 
+ 377:buzzer.c      ****         default:
+ 378:buzzer.c      ****         {
+ 379:buzzer.c      ****             /* No such beep type defined */
+ 380:buzzer.c      ****             ReportPanic(app_panic_unexpected_beep_type);
+ 340                 	@g_buzz_data+0x0001
+ 341 003e 0B 14       		tst	@$XAP_AL
+ 342 003f 00 00 00 00 		beq	.L35
+ 342      00 9C 
+ 343                 		.loc 1 389 0
+ 381:buzzer.c      ****         }
+ 382:buzzer.c      ****         break;
+ 383:buzzer.c      ****     }
+ 384:buzzer.c      **** 
+ 385:buzzer.c      ****     if(g_buzz_data.beep_type != buzzer_beep_off)
+ 344                 	AL,#0x0000
+ 345 0042 00 00 00 15 		ld	AH,#0x0001
+ 346 0044 00 00 00 99 		bsr	PioEnablePWM
+ 347 0046 00 00 00 00 		.loc 1 392 0
+ 347      00 F4 
+ 386:buzzer.c      ****     {
+ 387:buzzer.c      ****         /* Enable buzzer */
+ 388:buzzer.c      ****         PioEnablePWM(BUZZER_PWM_INDEX_0, TRUE);
+ 348                 	AL,#appBuzzerTimerHandler
+ 349 0049 00 14       		ld	AH,#0x0001
+ 350 004a 01 10       		st	AH,@(0,Y)
+ 351 004b 00 00 00 00 		st	AL,@(0x0001,Y)
+ 351      00 9C 
+ 389:buzzer.c      **** 
+ 390:buzzer.c      ****         /* Start the buzzer timer */
+ 391:buzzer.c      ****         g_buzz_data.buzzer_tid = TimerCreate(beep_timer, TRUE, 
+ 352                 	AL,@(0x0003,Y)
+ 353 004e 00 00 00 14 		ld	AH,@(0x0002,Y)
+ 354 0050 01 10       		bsr	TimerCreate
+ 355 0051 00 23       		st	AL,@g_buzz_data
+ 356 0052 01 27       	.L35:
+ 357 0053 03 17       		.loc 1 396 0
+ 358 0054 02 13       		leave	#0x0007
+ 359 0055 00 00 00 00 	.LFE6:
+ 359      00 9C 
+ 360 0058 00 00 00 25 		.size	SoundBuzzer, .-SoundBuzzer
+ 361                 		.global	__size_of_SoundBuzzer
+ 392:buzzer.c      ****                                              appBuzzerTimerHandler);
+ 393:buzzer.c      ****     }
+ 394:buzzer.c      **** 
+ 395:buzzer.c      **** }
+ 362                 	ze_of_SoundBuzzer,. - SoundBuzzer
+ 363 005a 07 0F       		.section	.bss.g_buzz_data,"aw",@nobits
+ 364                 		.type	g_buzz_data, @object
+ 365                 		.size	g_buzz_data, 3
+ 366                 	g_buzz_data:
+ 367                 		.space	3
+ 368                 		.section	.debug_frame,"",@progbits
+ 369                 	.Lframe0:
+ 370                 		.4byte	.LECIE0-.LSCIE0
+ 371                 	.LSCIE0:
+ 372 0000 00 00 00 00 		.4byte	0xffffffff
+ 372      00 00 
+ 373                 		.1byte	0x1
+ 374                 		.ascii "\000"
+ 375 0000 00 00 00 00 		.1byte	0x1
+ 376                 		.1byte	0x7f
+ 377 0002 FF FF FF FF 		.1byte	0x3
+ 378 0004 01          		.1byte	0xc
+ 379 0004 00          		.1byte	0x5
+ 380 0005 01          		.1byte	0x0
+ 381 0005 7F          		.p2align	2
+ 382 0006 03          	.LECIE0:
+ 383 0006 0C          	.LSFDE0:
+ 384 0007 05          		.4byte	.LEFDE0-.LASFDE0
+ 385 0007 00          	.LASFDE0:
+ 386                 		.4byte	.Lframe0
+ 387                 		.4byte	.LFB2
+ 388                 		.4byte	.LFE2-.LFB2
+ 389 0008 00 00 00 00 		.1byte	0x4
+ 390                 		.4byte	.LCFI0-.LFB2
+ 391 000a 00 00 00 00 		.1byte	0xe
+ 392 000c 00 00 00 00 		.1byte	0x7
+ 393 000e 00 00 00 00 		.1byte	0x83
+ 394 0010 41          		.1byte	0x1
+ 395                 		.p2align	2
+ 396 0010 0E          	.LEFDE0:
+ 397 0011 07          	.LSFDE2:
+ 398 0011 83          		.4byte	.LEFDE2-.LASFDE2
+ 399 0012 01          	.LASFDE2:
+ 400 0012 00 00 00    		.4byte	.Lframe0
+ 401                 		.4byte	.LFB3
+ 402                 		.4byte	.LFE3-.LFB3
+ 403 0014 00 00 00 00 		.1byte	0x4
+ 404                 		.4byte	.LCFI1-.LFB3
+ 405 0016 00 00 00 00 		.1byte	0xe
+ 406 0018 00 00 00 00 		.1byte	0x8
+ 407 001a 00 00 00 00 		.1byte	0x83
+ 408 001c 41          		.1byte	0x1
+ 409                 		.p2align	2
+ 410 001c 0E          	.LEFDE2:
+ 411 001d 08          	.LSFDE4:
+ 412 001d 83          		.4byte	.LEFDE4-.LASFDE4
+ 413 001e 01          	.LASFDE4:
+ 414 001e 00 00 00    		.4byte	.Lframe0
+ 415                 		.4byte	.LFB4
+ 416                 		.4byte	.LFE4-.LFB4
+ 417 0020 00 00 00 00 		.p2align	2
+ 418                 	.LEFDE4:
+ 419 0022 00 00 00 00 	.LSFDE6:
+ 420 0024 00 00 00 00 		.4byte	.LEFDE6-.LASFDE6
+ 421 0026 00 00 00 00 	.LASFDE6:
+ 422                 		.4byte	.Lframe0
+ 423                 		.4byte	.LFB5
+ 424                 		.4byte	.LFE5-.LFB5
+ 425 0028 00 00 00 00 		.1byte	0x4
+ 426                 		.4byte	.LCFI2-.LFB5
+ 427 002a 00 00 00 00 		.1byte	0xe
+ 428 002c 00 00 00 00 		.1byte	0x1
+ 429 002e 00 00 00 00 		.1byte	0x83
+ 430 0030 41          		.1byte	0x1
+ 431                 		.p2align	2
+ 432 0030 0E          	.LEFDE6:
+ 433 0031 01          	.LSFDE8:
+ 434 0031 83          		.4byte	.LEFDE8-.LASFDE8
+ 435 0032 01          	.LASFDE8:
+ 436 0032 00 00 00    		.4byte	.Lframe0
+ 437                 		.4byte	.LFB6
+ 438                 		.4byte	.LFE6-.LFB6
+ 439 0034 00 00 00 00 		.1byte	0x4
+ 440                 		.4byte	.LCFI3-.LFB6
+ 441 0036 00 00 00 00 		.1byte	0xe
+ 442 0038 00 00 00 00 		.1byte	0x7
+ 443 003a 00 00 00 00 		.1byte	0x83
+ 444 003c 41          		.1byte	0x1
+ 445                 		.p2align	2
+ 446 003c 0E          	.LEFDE8:
+ 447 003d 07          		.text
+ 448 003d 83          	.Letext0:
+ 449 003e 01          		.section	.debug_loc,"",@progbits
+ 450 003e 00 00 00    	.Ldebug_loc0:
+ 451                 	.LLST0:
+ 452                 		.4byte	.LFB2
+ 453                 		.4byte	.LCFI0
+ 454                 		.2byte	0x1
+ 455                 		.1byte	0x55
+ 456                 		.4byte	.LCFI0
+ 457 0000 00 00 00 00 		.4byte	.LFE2
+ 458 0002 00 00 00 00 		.2byte	0x2
+ 459 0004 00 01       		.1byte	0x75
+ 460 0005 55          		.1byte	0x7
+ 461 0005 00 00 00 00 		.4byte	0x0
+ 462 0007 00 00 00 00 		.4byte	0x0
+ 463 0009 00 02       	.LLST1:
+ 464 000a 75          		.4byte	.LFB3
+ 465 000b 07          		.4byte	.LCFI1
+ 466 000b 00 00 00 00 		.2byte	0x1
+ 467 000d 00 00 00 00 		.1byte	0x55
+ 468                 		.4byte	.LCFI1
+ 469 000f 00 00 00 00 		.4byte	.LFE3
+ 470 0011 00 00 00 00 		.2byte	0x2
+ 471 0013 00 01       		.1byte	0x75
+ 472 0014 55          		.1byte	0x8
+ 473 0015 00 00 00 00 		.4byte	0x0
+ 474 0017 00 00 00 00 		.4byte	0x0
+ 475 0019 00 02       	.LLST3:
+ 476 001a 75          		.4byte	.LFB5
+ 477 001a 08          		.4byte	.LCFI2
+ 478 001b 00 00 00 00 		.2byte	0x1
+ 479 001d 00 00 00 00 		.1byte	0x55
+ 480                 		.4byte	.LCFI2
+ 481 001f 00 00 00 00 		.4byte	.LFE5
+ 482 0021 00 00 00 00 		.2byte	0x2
+ 483 0023 00 01       		.1byte	0x75
+ 484 0024 55          		.1byte	0x1
+ 485 0024 00 00 00 00 		.4byte	0x0
+ 486 0026 00 00 00 00 		.4byte	0x0
+ 487 0028 00 02       	.LLST4:
+ 488 0029 75          		.4byte	.LFB6
+ 489 002a 01          		.4byte	.LCFI3
+ 490 002a 00 00 00 00 		.2byte	0x1
+ 491 002c 00 00 00 00 		.1byte	0x55
+ 492                 		.4byte	.LCFI3
+ 493 002e 00 00 00 00 		.4byte	.LFE6
+ 494 0030 00 00 00 00 		.2byte	0x2
+ 495 0032 00 01       		.1byte	0x75
+ 496 0033 55          		.1byte	0x7
+ 497 0034 00 00 00 00 		.4byte	0x0
+ 498 0036 00 00 00 00 		.4byte	0x0
+ 499 0038 00 02       		.file 2 "C:/CSR_uEnergy_SDK-2.3.0.31/tools/include/CSR101x_A05/types.h"
+ 500 0039 75          		.file 3 "C:/CSR_uEnergy_SDK-2.3.0.31/tools/include/CSR101x_A05/pio.h"
+ 501 0039 07          		.file 4 "C:/CSR_uEnergy_SDK-2.3.0.31/tools/include/CSR101x_A05/timer.h"
+ 502 003a 00 00 00 00 		.file 5 "buzzer.h"
+ 503 003c 00 00 00 00 		.file 6 "gatt_access.h"
+ 504                 		.section	.debug_info
+ 505                 		.4byte	0x2bf
+ 506                 		.2byte	0x2
+ 507                 		.4byte	.Ldebug_abbrev0
+ 508                 		.1byte	0x4
+ 509                 		.1byte	0x1
+ 510 0000 00 00 02 BF 		.4byte	.LASF66
+ 511 0002 00 02       		.1byte	0x1
+ 512 0003 00 00 00 00 		.4byte	.LASF67
+ 513 0005 04          		.4byte	.LASF68
+ 514 0005 01          		.4byte	0x0
+ 515 0006 00 00 00 00 		.4byte	0x0
+ 516 0008 01          		.4byte	.Ldebug_ranges0+0x0
+ 517 0008 00 00 00 00 		.4byte	.Ldebug_line0
+ 518 000a 00 00 00 00 		.1byte	0x2
+ 519 000c 00 00 00 00 		.1byte	0x2
+ 520 000e 00 00 00 00 		.1byte	0x8
+ 521 0010 00 00 00 00 		.4byte	.LASF0
+ 522 0012 00 00 00 00 		.1byte	0x3
+ 523 0014 02          		.4byte	.LASF2
+ 524 0015 02          		.1byte	0x2
+ 525 0015 08          		.1byte	0x1f
+ 526 0016 00 00 00 00 		.4byte	0x3b
+ 527 0018 03          		.1byte	0x2
+ 528 0018 00 00 00 00 		.1byte	0x2
+ 529 001a 02          		.1byte	0x7
+ 530 001b 1F          		.4byte	.LASF1
+ 531 001b 00 00 00 3B 		.1byte	0x3
+ 532 001d 02          		.4byte	.LASF3
+ 533 001e 02          		.1byte	0x2
+ 534 001e 07          		.1byte	0x20
+ 535 001f 00 00 00 00 		.4byte	0x4d
+ 536 0021 03          		.1byte	0x2
+ 537 0021 00 00 00 00 		.1byte	0x4
+ 538 0023 02          		.1byte	0x7
+ 539 0024 20          		.4byte	.LASF4
+ 540 0024 00 00 00 4D 		.1byte	0x2
+ 541 0026 02          		.1byte	0x2
+ 542 0027 04          		.1byte	0x6
+ 543 0027 07          		.4byte	.LASF5
+ 544 0028 00 00 00 00 		.1byte	0x2
+ 545 002a 02          		.1byte	0x2
+ 546 002a 02          		.1byte	0x5
+ 547 002b 06          		.4byte	.LASF6
+ 548 002b 00 00 00 00 		.1byte	0x2
+ 549 002d 02          		.1byte	0x4
+ 550 002e 02          		.1byte	0x5
+ 551 002e 05          		.4byte	.LASF7
+ 552 002f 00 00 00 00 		.1byte	0x2
+ 553 0031 02          		.1byte	0x2
+ 554 0031 04          		.1byte	0x7
+ 555 0032 05          		.4byte	.LASF8
+ 556 0032 00 00 00 00 		.1byte	0x4
+ 557 0034 02          		.1byte	0x2
+ 558 0035 02          		.1byte	0x3
+ 559 0035 07          		.1byte	0x1b
+ 560 0036 00 00 00 00 		.4byte	0x10f
+ 561 0038 04          		.1byte	0x5
+ 562 0038 02          		.4byte	.LASF9
+ 563 0039 03          		.1byte	0x0
+ 564 0039 1B          		.1byte	0x5
+ 565 003a 00 00 01 0F 		.4byte	.LASF10
+ 566 003c 05          		.1byte	0x1
+ 567 003c 00 00 00 00 		.1byte	0x5
+ 568 003e 00          		.4byte	.LASF11
+ 569 003f 05          		.1byte	0x3
+ 570 003f 00 00 00 00 		.1byte	0x5
+ 571 0041 01          		.4byte	.LASF12
+ 572 0042 05          		.1byte	0x4
+ 573 0042 00 00 00 00 		.1byte	0x5
+ 574 0044 03          		.4byte	.LASF13
+ 575 0045 05          		.1byte	0x5
+ 576 0045 00 00 00 00 		.1byte	0x5
+ 577 0047 04          		.4byte	.LASF14
+ 578 0048 05          		.1byte	0x6
+ 579 0048 00 00 00 00 		.1byte	0x5
+ 580 004a 05          		.4byte	.LASF15
+ 581 004b 05          		.1byte	0x7
+ 582 004b 00 00 00 00 		.1byte	0x5
+ 583 004d 06          		.4byte	.LASF16
+ 584 004e 05          		.1byte	0x8
+ 585 004e 00 00 00 00 		.1byte	0x5
+ 586 0050 07          		.4byte	.LASF17
+ 587 0051 05          		.1byte	0x9
+ 588 0051 00 00 00 00 		.1byte	0x5
+ 589 0053 08          		.4byte	.LASF18
+ 590 0054 05          		.1byte	0xa
+ 591 0054 00 00 00 00 		.1byte	0x5
+ 592 0056 09          		.4byte	.LASF19
+ 593 0057 05          		.1byte	0xb
+ 594 0057 00 00 00 00 		.1byte	0x5
+ 595 0059 0A          		.4byte	.LASF20
+ 596 005a 05          		.1byte	0xc
+ 597 005a 00 00 00 00 		.1byte	0x5
+ 598 005c 0B          		.4byte	.LASF21
+ 599 005d 05          		.1byte	0xd
+ 600 005d 00 00 00 00 		.1byte	0x5
+ 601 005f 0C          		.4byte	.LASF22
+ 602 0060 05          		.1byte	0xe
+ 603 0060 00 00 00 00 		.1byte	0x5
+ 604 0062 0D          		.4byte	.LASF23
+ 605 0063 05          		.1byte	0xf
+ 606 0063 00 00 00 00 		.1byte	0x5
+ 607 0065 0E          		.4byte	.LASF24
+ 608 0066 05          		.1byte	0x10
+ 609 0066 00 00 00 00 		.1byte	0x5
+ 610 0068 0F          		.4byte	.LASF25
+ 611 0069 05          		.1byte	0x11
+ 612 0069 00 00 00 00 		.1byte	0x5
+ 613 006b 10          		.4byte	.LASF26
+ 614 006c 05          		.1byte	0x12
+ 615 006c 00 00 00 00 		.1byte	0x5
+ 616 006e 11          		.4byte	.LASF27
+ 617 006f 05          		.1byte	0x13
+ 618 006f 00 00 00 00 		.1byte	0x5
+ 619 0071 12          		.4byte	.LASF28
+ 620 0072 05          		.1byte	0x14
+ 621 0072 00 00 00 00 		.1byte	0x5
+ 622 0074 13          		.4byte	.LASF29
+ 623 0075 05          		.1byte	0x15
+ 624 0075 00 00 00 00 		.1byte	0x5
+ 625 0077 14          		.4byte	.LASF30
+ 626 0078 05          		.1byte	0x16
+ 627 0078 00 00 00 00 		.1byte	0x5
+ 628 007a 15          		.4byte	.LASF31
+ 629 007b 05          		.1byte	0x17
+ 630 007b 00 00 00 00 		.1byte	0x5
+ 631 007d 16          		.4byte	.LASF32
+ 632 007e 05          		.1byte	0x18
+ 633 007e 00 00 00 00 		.1byte	0x5
+ 634 0080 17          		.4byte	.LASF33
+ 635 0081 05          		.1byte	0x19
+ 636 0081 00 00 00 00 		.1byte	0x0
+ 637 0083 18          		.1byte	0x6
+ 638 0084 05          		.1byte	0x2
+ 639 0084 00 00 00 00 		.1byte	0x3
+ 640 0086 19          		.2byte	0x1a3
+ 641 0087 00          		.4byte	0x131
+ 642 0087 06          		.1byte	0x5
+ 643 0088 02          		.4byte	.LASF34
+ 644 0088 03          		.1byte	0x0
+ 645 0089 01 A3       		.1byte	0x5
+ 646 008a 00 00 01 31 		.4byte	.LASF35
+ 647 008c 05          		.1byte	0x1
+ 648 008c 00 00 00 00 		.1byte	0x5
+ 649 008e 00          		.4byte	.LASF36
+ 650 008f 05          		.1byte	0x2
+ 651 008f 00 00 00 00 		.1byte	0x5
+ 652 0091 01          		.4byte	.LASF37
+ 653 0092 05          		.1byte	0x3
+ 654 0092 00 00 00 00 		.1byte	0x0
+ 655 0094 02          		.1byte	0x7
+ 656 0095 05          		.1byte	0x2
+ 657 0095 00 00 00 00 		.1byte	0x7
+ 658 0097 03          		.1byte	0x3
+ 659 0098 00          		.4byte	.LASF38
+ 660 0098 07          		.1byte	0x4
+ 661 0099 02          		.1byte	0x1f
+ 662 0099 07          		.4byte	0x30
+ 663 009a 03          		.1byte	0x4
+ 664 009a 00 00 00 00 		.1byte	0x2
+ 665 009c 04          		.1byte	0x5
+ 666 009d 1F          		.1byte	0x20
+ 667 009d 00 00 00 30 		.4byte	0x166
+ 668 009f 04          		.1byte	0x5
+ 669 00a0 02          		.4byte	.LASF39
+ 670 00a0 05          		.1byte	0x0
+ 671 00a1 20          		.1byte	0x5
+ 672 00a1 00 00 01 66 		.4byte	.LASF40
+ 673 00a3 05          		.1byte	0x1
+ 674 00a4 00 00 00 00 		.1byte	0x5
+ 675 00a6 00          		.4byte	.LASF41
+ 676 00a6 05          		.1byte	0x2
+ 677 00a7 00 00 00 00 		.1byte	0x5
+ 678 00a9 01          		.4byte	.LASF42
+ 679 00a9 05          		.1byte	0x3
+ 680 00aa 00 00 00 00 		.1byte	0x5
+ 681 00ac 02          		.4byte	.LASF43
+ 682 00ac 05          		.1byte	0x4
+ 683 00ad 00 00 00 00 		.1byte	0x0
+ 684 00af 03          		.1byte	0x3
+ 685 00af 05          		.4byte	.LASF44
+ 686 00b0 00 00 00 00 		.1byte	0x5
+ 687 00b2 04          		.1byte	0x30
+ 688 00b2 00          		.4byte	0x13f
+ 689 00b3 03          		.1byte	0x4
+ 690 00b3 00 00 00 00 		.1byte	0x2
+ 691 00b5 05          		.1byte	0x6
+ 692 00b6 30          		.1byte	0x6c
+ 693 00b6 00 00 01 3F 		.4byte	0x1c2
+ 694 00b8 04          		.1byte	0x5
+ 695 00b9 02          		.4byte	.LASF45
+ 696 00b9 06          		.1byte	0x0
+ 697 00ba 6C          		.1byte	0x5
+ 698 00ba 00 00 01 C2 		.4byte	.LASF46
+ 699 00bc 05          		.1byte	0x1
+ 700 00bd 00 00 00 00 		.1byte	0x5
+ 701 00bf 00          		.4byte	.LASF47
+ 702 00bf 05          		.1byte	0x2
+ 703 00c0 00 00 00 00 		.1byte	0x5
+ 704 00c2 01          		.4byte	.LASF48
+ 705 00c2 05          		.1byte	0x3
+ 706 00c3 00 00 00 00 		.1byte	0x5
+ 707 00c5 02          		.4byte	.LASF49
+ 708 00c5 05          		.1byte	0x4
+ 709 00c6 00 00 00 00 		.1byte	0x5
+ 710 00c8 03          		.4byte	.LASF50
+ 711 00c8 05          		.1byte	0x5
+ 712 00c9 00 00 00 00 		.1byte	0x5
+ 713 00cb 04          		.4byte	.LASF51
+ 714 00cb 05          		.1byte	0x6
+ 715 00cc 00 00 00 00 		.1byte	0x5
+ 716 00ce 05          		.4byte	.LASF52
+ 717 00ce 05          		.1byte	0x7
+ 718 00cf 00 00 00 00 		.1byte	0x5
+ 719 00d1 06          		.4byte	.LASF53
+ 720 00d1 05          		.1byte	0x8
+ 721 00d2 00 00 00 00 		.1byte	0x5
+ 722 00d4 07          		.4byte	.LASF54
+ 723 00d4 05          		.1byte	0x9
+ 724 00d5 00 00 00 00 		.1byte	0x5
+ 725 00d7 08          		.4byte	.LASF55
+ 726 00d7 05          		.1byte	0xa
+ 727 00d8 00 00 00 00 		.1byte	0x5
+ 728 00da 09          		.4byte	.LASF56
+ 729 00da 05          		.1byte	0xb
+ 730 00db 00 00 00 00 		.1byte	0x0
+ 731 00dd 0A          		.1byte	0x8
+ 732 00dd 05          		.4byte	.LASF69
+ 733 00de 00 00 00 00 		.1byte	0x6
+ 734 00e0 0B          		.1byte	0x1
+ 735 00e0 00          		.1byte	0x49
+ 736 00e1 08          		.4byte	0x1f9
+ 737 00e1 00 00 00 00 		.1byte	0x9
+ 738 00e3 06          		.4byte	.LASF57
+ 739 00e4 01          		.1byte	0x1
+ 740 00e4 49          		.1byte	0x4c
+ 741 00e5 00 00 01 F9 		.4byte	0x134
+ 742 00e7 09          		.1byte	0x2
+ 743 00e7 00 00 00 00 		.1byte	0x23
+ 744 00e9 01          		.1byte	0x0
+ 745 00ea 4C          		.1byte	0x9
+ 746 00ea 00 00 01 34 		.4byte	.LASF58
+ 747 00ec 02          		.1byte	0x1
+ 748 00ed 23          		.1byte	0x4f
+ 749 00ed 00          		.4byte	0x166
+ 750 00ee 09          		.1byte	0x2
+ 751 00ee 00 00 00 00 		.1byte	0x23
+ 752 00f0 01          		.1byte	0x1
+ 753 00f1 4F          		.1byte	0x9
+ 754 00f1 00 00 01 66 		.4byte	.LASF59
+ 755 00f3 02          		.1byte	0x1
+ 756 00f4 23          		.1byte	0x54
+ 757 00f4 01          		.4byte	0x30
+ 758 00f5 09          		.1byte	0x2
+ 759 00f5 00 00 00 00 		.1byte	0x23
+ 760 00f7 01          		.1byte	0x2
+ 761 00f8 54          		.1byte	0x0
+ 762 00f8 00 00 00 30 		.1byte	0x3
+ 763 00fa 02          		.4byte	.LASF60
+ 764 00fb 23          		.1byte	0x1
+ 765 00fb 02          		.1byte	0x56
+ 766 00fc 00          		.4byte	0x1c2
+ 767 00fc 03          		.1byte	0xa
+ 768 00fd 00 00 00 00 		.4byte	.LASF70
+ 769 00ff 01          		.1byte	0x1
+ 770 00ff 56          		.1byte	0x78
+ 771 0100 00 00 01 C2 		.1byte	0x1
+ 772 0102 0A          		.4byte	.LFB2
+ 773 0102 00 00 00 00 		.4byte	.LFE2
+ 774 0104 01          		.4byte	.LLST0
+ 775 0105 78          		.4byte	0x239
+ 776 0105 01          		.1byte	0xb
+ 777 0106 00 00 00 00 		.ascii "tid\000"
+ 778 0108 00 00 00 00 		.1byte	0x1
+ 779 010a 00 00 00 00 		.1byte	0x77
+ 780 010c 00 00 02 39 		.4byte	0x134
+ 781 010e 0B          		.1byte	0x2
+ 782 010e 74 69 64 00 		.1byte	0x76
+ 783 0110 01          		.1byte	0x4
+ 784 0111 77          		.1byte	0xc
+ 785 0111 00 00 01 34 		.4byte	.LASF64
+ 786 0113 02          		.1byte	0x1
+ 787 0114 76          		.1byte	0x7a
+ 788 0114 04          		.4byte	0x42
+ 789 0115 0C          		.1byte	0x2
+ 790 0115 00 00 00 00 		.1byte	0x76
+ 791 0117 01          		.1byte	0x2
+ 792 0118 7A          		.1byte	0x0
+ 793 0118 00 00 00 42 		.1byte	0xd
+ 794 011a 02          		.1byte	0x1
+ 795 011b 76          		.4byte	.LASF61
+ 796 011b 02          		.1byte	0x1
+ 797 011c 00          		.1byte	0xfc
+ 798 011c 0D          		.1byte	0x1
+ 799 011d 01          		.4byte	.LFB3
+ 800 011d 00 00 00 00 		.4byte	.LFE3
+ 801 011f 01          		.4byte	.LLST1
+ 802 0120 FC          		.1byte	0xe
+ 803 0120 01          		.1byte	0x1
+ 804 0121 00 00 00 00 		.4byte	.LASF62
+ 805 0123 00 00 00 00 		.1byte	0x1
+ 806 0125 00 00 00 00 		.2byte	0x11a
+ 807 0127 0E          		.1byte	0x1
+ 808 0127 01          		.4byte	.LFB4
+ 809 0128 00 00 00 00 		.4byte	.LFE4
+ 810 012a 01          		.1byte	0x1
+ 811 012a 01 1A       		.1byte	0x55
+ 812 012b 01          		.1byte	0xf
+ 813 012c 00 00 00 00 		.1byte	0x1
+ 814 012e 00 00 00 00 		.4byte	.LASF63
+ 815 0130 01          		.1byte	0x1
+ 816 0130 55          		.2byte	0x133
+ 817 0131 0F          		.1byte	0x1
+ 818 0131 01          		.4byte	.LFB5
+ 819 0132 00 00 00 00 		.4byte	.LFE5
+ 820 0134 01          		.4byte	.LLST3
+ 821 0134 01 33       		.1byte	0x10
+ 822 0135 01          		.1byte	0x1
+ 823 0136 00 00 00 00 		.4byte	.LASF71
+ 824 0138 00 00 00 00 		.1byte	0x1
+ 825 013a 00 00 00 00 		.2byte	0x14d
+ 826 013c 10          		.1byte	0x1
+ 827 013c 01          		.4byte	.LFB6
+ 828 013d 00 00 00 00 		.4byte	.LFE6
+ 829 013f 01          		.4byte	.LLST4
+ 830 013f 01 4D       		.4byte	0x2b1
+ 831 0140 01          		.1byte	0x11
+ 832 0141 00 00 00 00 		.4byte	.LASF58
+ 833 0143 00 00 00 00 		.1byte	0x1
+ 834 0145 00 00 00 00 		.2byte	0x14c
+ 835 0147 00 00 02 B1 		.4byte	0x166
+ 836 0149 11          		.1byte	0x2
+ 837 0149 00 00 00 00 		.1byte	0x76
+ 838 014b 01          		.1byte	0x4
+ 839 014c 01 4C       		.1byte	0x12
+ 840 014d 00 00 01 66 		.4byte	.LASF64
+ 841 014f 02          		.1byte	0x1
+ 842 014f 76          		.2byte	0x14f
+ 843 0150 04          		.4byte	0x42
+ 844 0150 12          		.1byte	0x2
+ 845 0151 00 00 00 00 		.1byte	0x76
+ 846 0153 01          		.1byte	0x2
+ 847 0153 01 4F       		.1byte	0x0
+ 848 0154 00 00 00 42 		.1byte	0xc
+ 849 0156 02          		.4byte	.LASF65
+ 850 0157 76          		.1byte	0x1
+ 851 0157 02          		.1byte	0x5d
+ 852 0158 00          		.4byte	0x1f9
+ 853 0158 0C          		.1byte	0x5
+ 854 0159 00 00 00 00 		.1byte	0x3
+ 855 015b 01          		.4byte	g_buzz_data
+ 856 015b 5D          		.1byte	0x0
+ 857 015c 00 00 01 F9 		.section	.debug_abbrev
+ 858 015e 05          		.1byte	0x1
+ 859 015e 03          		.1byte	0x11
+ 860 015f 00 00 00 00 		.1byte	0x1
+ 861 0161 00          		.1byte	0x25
+ 862                 		.1byte	0xe
+ 863 0000 01          		.1byte	0x13
+ 864 0000 11          		.1byte	0xb
+ 865 0001 01          		.1byte	0x3
+ 866 0001 25          		.1byte	0xe
+ 867 0002 0E          		.1byte	0x1b
+ 868 0002 13          		.1byte	0xe
+ 869 0003 0B          		.1byte	0x11
+ 870 0003 03          		.1byte	0x1
+ 871 0004 0E          		.1byte	0x52
+ 872 0004 1B          		.1byte	0x1
+ 873 0005 0E          		.1byte	0x55
+ 874 0005 11          		.1byte	0x6
+ 875 0006 01          		.1byte	0x10
+ 876 0006 52          		.1byte	0x6
+ 877 0007 01          		.1byte	0x0
+ 878 0007 55          		.1byte	0x0
+ 879 0008 06          		.1byte	0x2
+ 880 0008 10          		.1byte	0x24
+ 881 0009 06          		.1byte	0x0
+ 882 0009 00          		.1byte	0xb
+ 883 000a 00          		.1byte	0xb
+ 884 000a 02          		.1byte	0x3e
+ 885 000b 24          		.1byte	0xb
+ 886 000b 00          		.1byte	0x3
+ 887 000c 0B          		.1byte	0xe
+ 888 000c 0B          		.1byte	0x0
+ 889 000d 3E          		.1byte	0x0
+ 890 000d 0B          		.1byte	0x3
+ 891 000e 03          		.1byte	0x16
+ 892 000e 0E          		.1byte	0x0
+ 893 000f 00          		.1byte	0x3
+ 894 000f 00          		.1byte	0xe
+ 895 0010 03          		.1byte	0x3a
+ 896 0010 16          		.1byte	0xb
+ 897 0011 00          		.1byte	0x3b
+ 898 0011 03          		.1byte	0xb
+ 899 0012 0E          		.1byte	0x49
+ 900 0012 3A          		.1byte	0x13
+ 901 0013 0B          		.1byte	0x0
+ 902 0013 3B          		.1byte	0x0
+ 903 0014 0B          		.1byte	0x4
+ 904 0014 49          		.1byte	0x4
+ 905 0015 13          		.1byte	0x1
+ 906 0015 00          		.1byte	0xb
+ 907 0016 00          		.1byte	0xb
+ 908 0016 04          		.1byte	0x3a
+ 909 0017 04          		.1byte	0xb
+ 910 0017 01          		.1byte	0x3b
+ 911 0018 0B          		.1byte	0xb
+ 912 0018 0B          		.1byte	0x1
+ 913 0019 3A          		.1byte	0x13
+ 914 0019 0B          		.1byte	0x0
+ 915 001a 3B          		.1byte	0x0
+ 916 001a 0B          		.1byte	0x5
+ 917 001b 01          		.1byte	0x28
+ 918 001b 13          		.1byte	0x0
+ 919 001c 00          		.1byte	0x3
+ 920 001c 00          		.1byte	0xe
+ 921 001d 05          		.1byte	0x1c
+ 922 001d 28          		.1byte	0xd
+ 923 001e 00          		.1byte	0x0
+ 924 001e 03          		.1byte	0x0
+ 925 001f 0E          		.1byte	0x6
+ 926 001f 1C          		.1byte	0x4
+ 927 0020 0D          		.1byte	0x1
+ 928 0020 00          		.1byte	0xb
+ 929 0021 00          		.1byte	0xb
+ 930 0021 06          		.1byte	0x3a
+ 931 0022 04          		.1byte	0xb
+ 932 0022 01          		.1byte	0x3b
+ 933 0023 0B          		.1byte	0x5
+ 934 0023 0B          		.1byte	0x1
+ 935 0024 3A          		.1byte	0x13
+ 936 0024 0B          		.1byte	0x0
+ 937 0025 3B          		.1byte	0x0
+ 938 0025 05          		.1byte	0x7
+ 939 0026 01          		.1byte	0x24
+ 940 0026 13          		.1byte	0x0
+ 941 0027 00          		.1byte	0xb
+ 942 0027 00          		.1byte	0xb
+ 943 0028 07          		.1byte	0x3e
+ 944 0028 24          		.1byte	0xb
+ 945 0029 00          		.1byte	0x0
+ 946 0029 0B          		.1byte	0x0
+ 947 002a 0B          		.1byte	0x8
+ 948 002a 3E          		.1byte	0x13
+ 949 002b 0B          		.1byte	0x1
+ 950 002b 00          		.1byte	0x3
+ 951 002c 00          		.1byte	0xe
+ 952 002c 08          		.1byte	0xb
+ 953 002d 13          		.1byte	0xb
+ 954 002d 01          		.1byte	0x3a
+ 955 002e 03          		.1byte	0xb
+ 956 002e 0E          		.1byte	0x3b
+ 957 002f 0B          		.1byte	0xb
+ 958 002f 0B          		.1byte	0x1
+ 959 0030 3A          		.1byte	0x13
+ 960 0030 0B          		.1byte	0x0
+ 961 0031 3B          		.1byte	0x0
+ 962 0031 0B          		.1byte	0x9
+ 963 0032 01          		.1byte	0xd
+ 964 0032 13          		.1byte	0x0
+ 965 0033 00          		.1byte	0x3
+ 966 0033 00          		.1byte	0xe
+ 967 0034 09          		.1byte	0x3a
+ 968 0034 0D          		.1byte	0xb
+ 969 0035 00          		.1byte	0x3b
+ 970 0035 03          		.1byte	0xb
+ 971 0036 0E          		.1byte	0x49
+ 972 0036 3A          		.1byte	0x13
+ 973 0037 0B          		.1byte	0x38
+ 974 0037 3B          		.1byte	0xa
+ 975 0038 0B          		.1byte	0x0
+ 976 0038 49          		.1byte	0x0
+ 977 0039 13          		.1byte	0xa
+ 978 0039 38          		.1byte	0x2e
+ 979 003a 0A          		.1byte	0x1
+ 980 003a 00          		.1byte	0x3
+ 981 003b 00          		.1byte	0xe
+ 982 003b 0A          		.1byte	0x3a
+ 983 003c 2E          		.1byte	0xb
+ 984 003c 01          		.1byte	0x3b
+ 985 003d 03          		.1byte	0xb
+ 986 003d 0E          		.1byte	0x27
+ 987 003e 3A          		.1byte	0xc
+ 988 003e 0B          		.1byte	0x11
+ 989 003f 3B          		.1byte	0x1
+ 990 003f 0B          		.1byte	0x12
+ 991 0040 27          		.1byte	0x1
+ 992 0040 0C          		.1byte	0x40
+ 993 0041 11          		.1byte	0x6
+ 994 0041 01          		.1byte	0x1
+ 995 0042 12          		.1byte	0x13
+ 996 0042 01          		.1byte	0x0
+ 997 0043 40          		.1byte	0x0
+ 998 0043 06          		.1byte	0xb
+ 999 0044 01          		.1byte	0x5
+ 1000 0044 13          		.1byte	0x0
+ 1001 0045 00          		.1byte	0x3
+ 1002 0045 00          		.1byte	0x8
+ 1003 0046 0B          		.1byte	0x3a
+ 1004 0046 05          		.1byte	0xb
+ 1005 0047 00          		.1byte	0x3b
+ 1006 0047 03          		.1byte	0xb
+ 1007 0048 08          		.1byte	0x49
+ 1008 0048 3A          		.1byte	0x13
+ 1009 0049 0B          		.1byte	0x2
+ 1010 0049 3B          		.1byte	0xa
+ 1011 004a 0B          		.1byte	0x0
+ 1012 004a 49          		.1byte	0x0
+ 1013 004b 13          		.1byte	0xc
+ 1014 004b 02          		.1byte	0x34
+ 1015 004c 0A          		.1byte	0x0
+ 1016 004c 00          		.1byte	0x3
+ 1017 004d 00          		.1byte	0xe
+ 1018 004d 0C          		.1byte	0x3a
+ 1019 004e 34          		.1byte	0xb
+ 1020 004e 00          		.1byte	0x3b
+ 1021 004f 03          		.1byte	0xb
+ 1022 004f 0E          		.1byte	0x49
+ 1023 0050 3A          		.1byte	0x13
+ 1024 0050 0B          		.1byte	0x2
+ 1025 0051 3B          		.1byte	0xa
+ 1026 0051 0B          		.1byte	0x0
+ 1027 0052 49          		.1byte	0x0
+ 1028 0052 13          		.1byte	0xd
+ 1029 0053 02          		.1byte	0x2e
+ 1030 0053 0A          		.1byte	0x0
+ 1031 0054 00          		.1byte	0x3f
+ 1032 0054 00          		.1byte	0xc
+ 1033 0055 0D          		.1byte	0x3
+ 1034 0055 2E          		.1byte	0xe
+ 1035 0056 00          		.1byte	0x3a
+ 1036 0056 3F          		.1byte	0xb
+ 1037 0057 0C          		.1byte	0x3b
+ 1038 0057 03          		.1byte	0xb
+ 1039 0058 0E          		.1byte	0x27
+ 1040 0058 3A          		.1byte	0xc
+ 1041 0059 0B          		.1byte	0x11
+ 1042 0059 3B          		.1byte	0x1
+ 1043 005a 0B          		.1byte	0x12
+ 1044 005a 27          		.1byte	0x1
+ 1045 005b 0C          		.1byte	0x40
+ 1046 005b 11          		.1byte	0x6
+ 1047 005c 01          		.1byte	0x0
+ 1048 005c 12          		.1byte	0x0
+ 1049 005d 01          		.1byte	0xe
+ 1050 005d 40          		.1byte	0x2e
+ 1051 005e 06          		.1byte	0x0
+ 1052 005e 00          		.1byte	0x3f
+ 1053 005f 00          		.1byte	0xc
+ 1054 005f 0E          		.1byte	0x3
+ 1055 0060 2E          		.1byte	0xe
+ 1056 0060 00          		.1byte	0x3a
+ 1057 0061 3F          		.1byte	0xb
+ 1058 0061 0C          		.1byte	0x3b
+ 1059 0062 03          		.1byte	0x5
+ 1060 0062 0E          		.1byte	0x27
+ 1061 0063 3A          		.1byte	0xc
+ 1062 0063 0B          		.1byte	0x11
+ 1063 0064 3B          		.1byte	0x1
+ 1064 0064 05          		.1byte	0x12
+ 1065 0065 27          		.1byte	0x1
+ 1066 0065 0C          		.1byte	0x40
+ 1067 0066 11          		.1byte	0xa
+ 1068 0066 01          		.1byte	0x0
+ 1069 0067 12          		.1byte	0x0
+ 1070 0067 01          		.1byte	0xf
+ 1071 0068 40          		.1byte	0x2e
+ 1072 0068 0A          		.1byte	0x0
+ 1073 0069 00          		.1byte	0x3f
+ 1074 0069 00          		.1byte	0xc
+ 1075 006a 0F          		.1byte	0x3
+ 1076 006a 2E          		.1byte	0xe
+ 1077 006b 00          		.1byte	0x3a
+ 1078 006b 3F          		.1byte	0xb
+ 1079 006c 0C          		.1byte	0x3b
+ 1080 006c 03          		.1byte	0x5
+ 1081 006d 0E          		.1byte	0x27
+ 1082 006d 3A          		.1byte	0xc
+ 1083 006e 0B          		.1byte	0x11
+ 1084 006e 3B          		.1byte	0x1
+ 1085 006f 05          		.1byte	0x12
+ 1086 006f 27          		.1byte	0x1
+ 1087 0070 0C          		.1byte	0x40
+ 1088 0070 11          		.1byte	0x6
+ 1089 0071 01          		.1byte	0x0
+ 1090 0071 12          		.1byte	0x0
+ 1091 0072 01          		.1byte	0x10
+ 1092 0072 40          		.1byte	0x2e
+ 1093 0073 06          		.1byte	0x1
+ 1094 0073 00          		.1byte	0x3f
+ 1095 0074 00          		.1byte	0xc
+ 1096 0074 10          		.1byte	0x3
+ 1097 0075 2E          		.1byte	0xe
+ 1098 0075 01          		.1byte	0x3a
+ 1099 0076 3F          		.1byte	0xb
+ 1100 0076 0C          		.1byte	0x3b
+ 1101 0077 03          		.1byte	0x5
+ 1102 0077 0E          		.1byte	0x27
+ 1103 0078 3A          		.1byte	0xc
+ 1104 0078 0B          		.1byte	0x11
+ 1105 0079 3B          		.1byte	0x1
+ 1106 0079 05          		.1byte	0x12
+ 1107 007a 27          		.1byte	0x1
+ 1108 007a 0C          		.1byte	0x40
+ 1109 007b 11          		.1byte	0x6
+ 1110 007b 01          		.1byte	0x1
+ 1111 007c 12          		.1byte	0x13
+ 1112 007c 01          		.1byte	0x0
+ 1113 007d 40          		.1byte	0x0
+ 1114 007d 06          		.1byte	0x11
+ 1115 007e 01          		.1byte	0x5
+ 1116 007e 13          		.1byte	0x0
+ 1117 007f 00          		.1byte	0x3
+ 1118 007f 00          		.1byte	0xe
+ 1119 0080 11          		.1byte	0x3a
+ 1120 0080 05          		.1byte	0xb
+ 1121 0081 00          		.1byte	0x3b
+ 1122 0081 03          		.1byte	0x5
+ 1123 0082 0E          		.1byte	0x49
+ 1124 0082 3A          		.1byte	0x13
+ 1125 0083 0B          		.1byte	0x2
+ 1126 0083 3B          		.1byte	0xa
+ 1127 0084 05          		.1byte	0x0
+ 1128 0084 49          		.1byte	0x0
+ 1129 0085 13          		.1byte	0x12
+ 1130 0085 02          		.1byte	0x34
+ 1131 0086 0A          		.1byte	0x0
+ 1132 0086 00          		.1byte	0x3
+ 1133 0087 00          		.1byte	0xe
+ 1134 0087 12          		.1byte	0x3a
+ 1135 0088 34          		.1byte	0xb
+ 1136 0088 00          		.1byte	0x3b
+ 1137 0089 03          		.1byte	0x5
+ 1138 0089 0E          		.1byte	0x49
+ 1139 008a 3A          		.1byte	0x13
+ 1140 008a 0B          		.1byte	0x2
+ 1141 008b 3B          		.1byte	0xa
+ 1142 008b 05          		.1byte	0x0
+ 1143 008c 49          		.1byte	0x0
+ 1144 008c 13          		.1byte	0x0
+ 1145 008d 02          		.section	.debug_pubnames,"",@progbits
+ 1146 008d 0A          		.4byte	0x5c
+ 1147 008e 00          		.2byte	0x2
+ 1148 008e 00          		.4byte	.Ldebug_info0
+ 1149 008f 00          		.4byte	0x2c3
+ 1150                 		.4byte	0x239
+ 1151 0000 00 00 00 5C 		.ascii "BuzzerInitHardware\000"
+ 1152 0002 00 02       		.4byte	0x24e
+ 1153 0003 00 00 00 00 		.ascii "BuzzerInitData\000"
+ 1154 0005 00 00 02 C3 		.4byte	0x262
+ 1155 0007 00 00 02 39 		.ascii "BuzzerResetData\000"
+ 1156 0009 42 75 7A 7A 		.4byte	0x278
+ 1156      65 72 49 6E 
+ 1156      69 74 48 61 
+ 1156      72 64 77 61 
+ 1156      72 65 00 
+ 1157 0012 00 00 02 4E 		.ascii "SoundBuzzer\000"
+ 1158 0014 42 75 7A 7A 		.4byte	0x0
+ 1158      65 72 49 6E 
+ 1158      69 74 44 61 
+ 1158      74 61 00 
+ 1159 001c 00 00 02 62 		.section	.debug_aranges,"",@progbits
+ 1160 001e 42 75 7A 7A 		.4byte	0x3c
+ 1160      65 72 52 65 
+ 1160      73 65 74 44 
+ 1160      61 74 61 00 
+ 1161 0026 00 00 02 78 		.2byte	0x2
+ 1162 0028 53 6F 75 6E 		.4byte	.Ldebug_info0
+ 1162      64 42 75 7A 
+ 1162      7A 65 72 00 
+ 1163 002e 00 00 00 00 		.1byte	0x4
+ 1164                 		.1byte	0x0
+ 1165 0000 00 00 00 3C 		.2byte	0x0
+ 1166 0002 00 02       		.2byte	0x0
+ 1167 0003 00 00 00 00 		.4byte	.LFB2
+ 1168 0005 04          		.4byte	.LFE2-.LFB2
+ 1169 0005 00          		.4byte	.LFB3
+ 1170 0006 00 00       		.4byte	.LFE3-.LFB3
+ 1171 0007 00 00       		.4byte	.LFB4
+ 1172 0008 00 00 00 00 		.4byte	.LFE4-.LFB4
+ 1173 000a 00 00 00 00 		.4byte	.LFB5
+ 1174 000c 00 00 00 00 		.4byte	.LFE5-.LFB5
+ 1175 000e 00 00 00 00 		.4byte	.LFB6
+ 1176 0010 00 00 00 00 		.4byte	.LFE6-.LFB6
+ 1177 0012 00 00 00 00 		.4byte	0x0
+ 1178 0014 00 00 00 00 		.4byte	0x0
+ 1179 0016 00 00 00 00 		.section	.debug_ranges,"",@progbits
+ 1180 0018 00 00 00 00 	.Ldebug_ranges0:
+ 1181 001a 00 00 00 00 		.4byte	.Ltext0
+ 1182 001c 00 00 00 00 		.4byte	.Letext0
+ 1183 001e 00 00 00 00 		.4byte	.LFB2
+ 1184                 		.4byte	.LFE2
+ 1185                 		.4byte	.LFB3
+ 1186 0000 00 00 00 00 		.4byte	.LFE3
+ 1187 0002 00 00 00 00 		.4byte	.LFB4
+ 1188 0004 00 00 00 00 		.4byte	.LFE4
+ 1189 0006 00 00 00 00 		.4byte	.LFB5
+ 1190 0008 00 00 00 00 		.4byte	.LFE5
+ 1191 000a 00 00 00 00 		.4byte	.LFB6
+ 1192 000c 00 00 00 00 		.4byte	.LFE6
+ 1193 000e 00 00 00 00 		.4byte	0x0
+ 1194 0010 00 00 00 00 		.4byte	0x0
+ 1195 0012 00 00 00 00 		.section	.debug_str,"MS",@progbits,1
+ 1196 0014 00 00 00 00 	.LASF33:
+ 1197 0016 00 00 00 00 		.ascii "pio_mode_ana_mon_clk_pio\000"
+ 1198 0018 00 00 00 00 	.LASF21:
+ 1199 001a 00 00 00 00 		.ascii "pio_mode_radio_rx_en\000"
+ 1200                 	.LASF55:
+ 1201                 		.ascii "app_panic_invalid_state\000"
+ 1202 0000 70 69 6F 5F 	.LASF58:
+ 1202      6D 6F 64 65 
+ 1202      5F 61 6E 61 
+ 1202      5F 6D 6F 6E 
+ 1202      5F 63 6C 6B 
+ 1203                 		.ascii "beep_type\000"
+ 1204 000c 70 69 6F 5F 	.LASF29:
+ 1204      6D 6F 64 65 
+ 1204      5F 72 61 64 
+ 1204      69 6F 5F 72 
+ 1204      78 5F 65 6E 
+ 1205                 		.ascii "pio_mode_i2c_data\000"
+ 1206 0017 61 70 70 5F 	.LASF66:
+ 1206      70 61 6E 69 
+ 1206      63 5F 69 6E 
+ 1206      76 61 6C 69 
+ 1206      64 5F 73 74 
+ 1207                 		.ascii "GNU C 4.3.4 CSR version 22 for xap [1468380]\000"
+ 1208 0023 62 65 65 70 	.LASF6:
+ 1208      5F 74 79 70 
+ 1208      65 00 
+ 1209                 		.ascii "short int\000"
+ 1210 0028 70 69 6F 5F 	.LASF41:
+ 1210      6D 6F 64 65 
+ 1210      5F 69 32 63 
+ 1210      5F 64 61 74 
+ 1210      61 00 
+ 1211                 		.ascii "buzzer_beep_long\000"
+ 1212 0031 47 4E 55 20 	.LASF28:
+ 1212      43 20 34 2E 
+ 1212      33 2E 34 20 
+ 1212      43 53 52 20 
+ 1212      76 65 72 73 
+ 1213                 		.ascii "pio_mode_ser_flash_csb\000"
+ 1214 0047 73 68 6F 72 	.LASF26:
+ 1214      74 20 69 6E 
+ 1214      74 00 
+ 1215                 		.ascii "pio_mode_pio_control_rxd\000"
+ 1216 004c 62 75 7A 7A 	.LASF23:
+ 1216      65 72 5F 62 
+ 1216      65 65 70 5F 
+ 1216      6C 6F 6E 67 
+ 1216      00 
+ 1217                 		.ascii "pio_mode_nvm_power_en\000"
+ 1218 0055 70 69 6F 5F 	.LASF69:
+ 1218      6D 6F 64 65 
+ 1218      5F 73 65 72 
+ 1218      5F 66 6C 61 
+ 1218      73 68 5F 63 
+ 1219                 		.ascii "_BUZZER_DATA_T\000"
+ 1220 0060 70 69 6F 5F 	.LASF2:
+ 1220      6D 6F 64 65 
+ 1220      5F 70 69 6F 
+ 1220      5F 63 6F 6E 
+ 1220      74 72 6F 6C 
+ 1221                 		.ascii "uint16\000"
+ 1222 006d 70 69 6F 5F 	.LASF64:
+ 1222      6D 6F 64 65 
+ 1222      5F 6E 76 6D 
+ 1222      5F 70 6F 77 
+ 1222      65 72 5F 65 
+ 1223                 		.ascii "beep_timer\000"
+ 1224 0078 5F 42 55 5A 	.LASF70:
+ 1224      5A 45 52 5F 
+ 1224      44 41 54 41 
+ 1224      5F 54 00 
+ 1225                 		.ascii "appBuzzerTimerHandler\000"
+ 1226 007f 75 69 6E 74 	.LASF31:
+ 1226      31 36 00 
+ 1227                 		.ascii "pio_mode_uart_flow_ctrl\000"
+ 1228 0083 62 65 65 70 	.LASF30:
+ 1228      5F 74 69 6D 
+ 1228      65 72 00 
+ 1229                 		.ascii "pio_mode_i2c_clock\000"
+ 1230 0088 61 70 70 42 	.LASF59:
+ 1230      75 7A 7A 65 
+ 1230      72 54 69 6D 
+ 1230      65 72 48 61 
+ 1230      6E 64 6C 65 
+ 1231                 		.ascii "beep_count\000"
+ 1232 0093 70 69 6F 5F 	.LASF50:
+ 1232      6D 6F 64 65 
+ 1232      5F 75 61 72 
+ 1232      74 5F 66 6C 
+ 1232      6F 77 5F 63 
+ 1233                 		.ascii "app_panic_nvm_write\000"
+ 1234 009f 70 69 6F 5F 	.LASF46:
+ 1234      6D 6F 64 65 
+ 1234      5F 69 32 63 
+ 1234      5F 63 6C 6F 
+ 1234      63 6B 00 
+ 1235                 		.ascii "app_panic_set_advert_data\000"
+ 1236 00a9 62 65 65 70 	.LASF54:
+ 1236      5F 63 6F 75 
+ 1236      6E 74 00 
+ 1237                 		.ascii "app_panic_con_param_update\000"
+ 1238 00ae 61 70 70 5F 	.LASF36:
+ 1238      70 61 6E 69 
+ 1238      63 5F 6E 76 
+ 1238      6D 5F 77 72 
+ 1238      69 74 65 00 
+ 1239                 		.ascii "pio_pwm_mode_open_source\000"
+ 1240 00b8 61 70 70 5F 	.LASF47:
+ 1240      70 61 6E 69 
+ 1240      63 5F 73 65 
+ 1240      74 5F 61 64 
+ 1240      76 65 72 74 
+ 1241                 		.ascii "app_panic_set_scan_rsp_data\000"
+ 1242 00c5 61 70 70 5F 	.LASF48:
+ 1242      70 61 6E 69 
+ 1242      63 5F 63 6F 
+ 1242      6E 5F 70 61 
+ 1242      72 61 6D 5F 
+ 1243                 		.ascii "app_panic_db_registration\000"
+ 1244 00d3 70 69 6F 5F 	.LASF9:
+ 1244      70 77 6D 5F 
+ 1244      6D 6F 64 65 
+ 1244      5F 6F 70 65 
+ 1244      6E 5F 73 6F 
+ 1245                 		.ascii "pio_mode_user\000"
+ 1246 00df 61 70 70 5F 	.LASF16:
+ 1246      70 61 6E 69 
+ 1246      63 5F 73 65 
+ 1246      74 5F 73 63 
+ 1246      61 6E 5F 72 
+ 1247                 		.ascii "pio_mode_quadrature0\000"
+ 1248 00ed 61 70 70 5F 	.LASF17:
+ 1248      70 61 6E 69 
+ 1248      63 5F 64 62 
+ 1248      5F 72 65 67 
+ 1248      69 73 74 72 
+ 1249                 		.ascii "pio_mode_quadrature1\000"
+ 1250 00fa 70 69 6F 5F 	.LASF18:
+ 1250      6D 6F 64 65 
+ 1250      5F 75 73 65 
+ 1250      72 00 
+ 1251                 		.ascii "pio_mode_quadrature2\000"
+ 1252 0101 70 69 6F 5F 	.LASF19:
+ 1252      6D 6F 64 65 
+ 1252      5F 71 75 61 
+ 1252      64 72 61 74 
+ 1252      75 72 65 30 
+ 1253                 		.ascii "pio_mode_quadrature3\000"
+ 1254 010c 70 69 6F 5F 	.LASF45:
+ 1254      6D 6F 64 65 
+ 1254      5F 71 75 61 
+ 1254      64 72 61 74 
+ 1254      75 72 65 31 
+ 1255                 		.ascii "app_panic_set_advert_params\000"
+ 1256 0116 70 69 6F 5F 	.LASF71:
+ 1256      6D 6F 64 65 
+ 1256      5F 71 75 61 
+ 1256      64 72 61 74 
+ 1256      75 72 65 32 
+ 1257                 		.ascii "SoundBuzzer\000"
+ 1258 0121 70 69 6F 5F 	.LASF0:
+ 1258      6D 6F 64 65 
+ 1258      5F 71 75 61 
+ 1258      64 72 61 74 
+ 1258      75 72 65 33 
+ 1259                 		.ascii "unsigned char\000"
+ 1260 012b 61 70 70 5F 	.LASF11:
+ 1260      70 61 6E 69 
+ 1260      63 5F 73 65 
+ 1260      74 5F 61 64 
+ 1260      76 65 72 74 
+ 1261                 		.ascii "pio_mode_clk_req\000"
+ 1262 0139 53 6F 75 6E 	.LASF42:
+ 1262      64 42 75 7A 
+ 1262      7A 65 72 00 
+ 1263                 		.ascii "buzzer_beep_twice\000"
+ 1264 013f 75 6E 73 69 	.LASF53:
+ 1264      67 6E 65 64 
+ 1264      20 63 68 61 
+ 1264      72 00 
+ 1265                 		.ascii "app_panic_add_whitelist\000"
+ 1266 0146 70 69 6F 5F 	.LASF5:
+ 1266      6D 6F 64 65 
+ 1266      5F 63 6C 6B 
+ 1266      5F 72 65 71 
+ 1266      00 
+ 1267                 		.ascii "signed char\000"
+ 1268 014f 62 75 7A 7A 	.LASF12:
+ 1268      65 72 5F 62 
+ 1268      65 65 70 5F 
+ 1268      74 77 69 63 
+ 1268      65 00 
+ 1269                 		.ascii "pio_mode_pwm0\000"
+ 1270 0158 61 70 70 5F 	.LASF13:
+ 1270      70 61 6E 69 
+ 1270      63 5F 61 64 
+ 1270      64 5F 77 68 
+ 1270      69 74 65 6C 
+ 1271                 		.ascii "pio_mode_pwm1\000"
+ 1272 0164 73 69 67 6E 	.LASF14:
+ 1272      65 64 20 63 
+ 1272      68 61 72 00 
+ 1273                 		.ascii "pio_mode_pwm2\000"
+ 1274 016a 70 69 6F 5F 	.LASF15:
+ 1274      6D 6F 64 65 
+ 1274      5F 70 77 6D 
+ 1274      30 00 
+ 1275                 		.ascii "pio_mode_pwm3\000"
+ 1276 0171 70 69 6F 5F 	.LASF8:
+ 1276      6D 6F 64 65 
+ 1276      5F 70 77 6D 
+ 1276      31 00 
+ 1277                 		.ascii "unsigned int\000"
+ 1278 0178 70 69 6F 5F 	.LASF44:
+ 1278      6D 6F 64 65 
+ 1278      5F 70 77 6D 
+ 1278      32 00 
+ 1279                 		.ascii "buzzer_beep_type\000"
+ 1280 017f 70 69 6F 5F 	.LASF49:
+ 1280      6D 6F 64 65 
+ 1280      5F 70 77 6D 
+ 1280      33 00 
+ 1281                 		.ascii "app_panic_nvm_read\000"
+ 1282 0186 75 6E 73 69 	.LASF37:
+ 1282      67 6E 65 64 
+ 1282      20 69 6E 74 
+ 1282      00 
+ 1283                 		.ascii "pio_pwm_mode_inverted_push_pull\000"
+ 1284 018c 62 75 7A 7A 	.LASF60:
+ 1284      65 72 5F 62 
+ 1284      65 65 70 5F 
+ 1284      74 79 70 65 
+ 1284      00 
+ 1285                 		.ascii "BUZZER_DATA_T\000"
+ 1286 0195 61 70 70 5F 	.LASF63:
+ 1286      70 61 6E 69 
+ 1286      63 5F 6E 76 
+ 1286      6D 5F 72 65 
+ 1286      61 64 00 
+ 1287                 		.ascii "BuzzerResetData\000"
+ 1288 019e 70 69 6F 5F 	.LASF1:
+ 1288      70 77 6D 5F 
+ 1288      6D 6F 64 65 
+ 1288      5F 69 6E 76 
+ 1288      65 72 74 65 
+ 1289                 		.ascii "short unsigned int\000"
+ 1290 01ae 42 55 5A 5A 	.LASF40:
+ 1290      45 52 5F 44 
+ 1290      41 54 41 5F 
+ 1290      54 00 
+ 1291                 		.ascii "buzzer_beep_short\000"
+ 1292 01b5 42 75 7A 7A 	.LASF7:
+ 1292      65 72 52 65 
+ 1292      73 65 74 44 
+ 1292      61 74 61 00 
+ 1293                 		.ascii "long int\000"
+ 1294 01bd 73 68 6F 72 	.LASF38:
+ 1294      74 20 75 6E 
+ 1294      73 69 67 6E 
+ 1294      65 64 20 69 
+ 1294      6E 74 00 
+ 1295                 		.ascii "timer_id\000"
+ 1296 01c7 62 75 7A 7A 	.LASF62:
+ 1296      65 72 5F 62 
+ 1296      65 65 70 5F 
+ 1296      73 68 6F 72 
+ 1296      74 00 
+ 1297                 		.ascii "BuzzerInitData\000"
+ 1298 01d0 6C 6F 6E 67 	.LASF22:
+ 1298      20 69 6E 74 
+ 1298      00 
+ 1299                 		.ascii "pio_mode_radio_tx_en\000"
+ 1300 01d4 74 69 6D 65 	.LASF3:
+ 1300      72 5F 69 64 
+ 1300      00 
+ 1301                 		.ascii "uint32\000"
+ 1302 01d9 42 75 7A 7A 	.LASF43:
+ 1302      65 72 49 6E 
+ 1302      69 74 44 61 
+ 1302      74 61 00 
+ 1303                 		.ascii "buzzer_beep_thrice\000"
+ 1304 01e0 70 69 6F 5F 	.LASF4:
+ 1304      6D 6F 64 65 
+ 1304      5F 72 61 64 
+ 1304      69 6F 5F 74 
+ 1304      78 5F 65 6E 
+ 1305                 		.ascii "long unsigned int\000"
+ 1306 01eb 75 69 6E 74 	.LASF27:
+ 1306      33 32 00 
+ 1307                 		.ascii "pio_mode_ser_flash_dout\000"
+ 1308 01ee 62 75 7A 7A 	.LASF32:
+ 1308      65 72 5F 62 
+ 1308      65 65 70 5F 
+ 1308      74 68 72 69 
+ 1308      63 65 00 
+ 1309                 		.ascii "pio_mode_pio_control_timer\000"
+ 1310 01f8 6C 6F 6E 67 	.LASF61:
+ 1310      20 75 6E 73 
+ 1310      69 67 6E 65 
+ 1310      64 20 69 6E 
+ 1310      74 00 
+ 1311                 		.ascii "BuzzerInitHardware\000"
+ 1312 0201 70 69 6F 5F 	.LASF65:
+ 1312      6D 6F 64 65 
+ 1312      5F 73 65 72 
+ 1312      5F 66 6C 61 
+ 1312      73 68 5F 64 
+ 1313                 		.ascii "g_buzz_data\000"
+ 1314 020d 70 69 6F 5F 	.LASF57:
+ 1314      6D 6F 64 65 
+ 1314      5F 70 69 6F 
+ 1314      5F 63 6F 6E 
+ 1314      74 72 6F 6C 
+ 1315                 		.ascii "buzzer_tid\000"
+ 1316 021a 42 75 7A 7A 	.LASF35:
+ 1316      65 72 49 6E 
+ 1316      69 74 48 61 
+ 1316      72 64 77 61 
+ 1316      72 65 00 
+ 1317                 		.ascii "pio_pwm_mode_open_drain\000"
+ 1318 0224 67 5F 62 75 	.LASF24:
+ 1318      7A 7A 5F 64 
+ 1318      61 74 61 00 
+ 1319                 		.ascii "pio_mode_pio_controller\000"
+ 1320 022a 62 75 7A 7A 	.LASF39:
+ 1320      65 72 5F 74 
+ 1320      69 64 00 
+ 1321                 		.ascii "buzzer_beep_off\000"
+ 1322 022f 70 69 6F 5F 	.LASF34:
+ 1322      70 77 6D 5F 
+ 1322      6D 6F 64 65 
+ 1322      5F 6F 70 65 
+ 1322      6E 5F 64 72 
+ 1323                 		.ascii "pio_pwm_mode_push_pull\000"
+ 1324 023b 70 69 6F 5F 	.LASF10:
+ 1324      6D 6F 64 65 
+ 1324      5F 70 69 6F 
+ 1324      5F 63 6F 6E 
+ 1324      74 72 6F 6C 
+ 1325                 		.ascii "pio_mode_edge_capture\000"
+ 1326 0247 62 75 7A 7A 	.LASF51:
+ 1326      65 72 5F 62 
+ 1326      65 65 70 5F 
+ 1326      6F 66 66 00 
+ 1327                 		.ascii "app_panic_read_tx_pwr_level\000"
+ 1328 024f 70 69 6F 5F 	.LASF67:
+ 1328      70 77 6D 5F 
+ 1328      6D 6F 64 65 
+ 1328      5F 70 75 73 
+ 1328      68 5F 70 75 
+ 1329                 		.ascii "buzzer.c\000"
+ 1330 025b 70 69 6F 5F 	.LASF56:
+ 1330      6D 6F 64 65 
+ 1330      5F 65 64 67 
+ 1330      65 5F 63 61 
+ 1330      70 74 75 72 
+ 1331                 		.ascii "app_panic_unexpected_beep_type\000"
+ 1332 0266 61 70 70 5F 	.LASF25:
+ 1332      70 61 6E 69 
+ 1332      63 5F 72 65 
+ 1332      61 64 5F 74 
+ 1332      78 5F 70 77 
+ 1333                 		.ascii "pio_mode_pio_control_txd\000"
+ 1334 0274 62 75 7A 7A 	.LASF20:
+ 1334      65 72 2E 63 
+ 1334      00 
+ 1335                 		.ascii "pio_mode_uart\000"
+ 1336 0278 61 70 70 5F 	.LASF52:
+ 1336      70 61 6E 69 
+ 1336      63 5F 75 6E 
+ 1336      65 78 70 65 
+ 1336      63 74 65 64 
+ 1337                 		.ascii "app_panic_delete_whitelist\000"
+ 1338 0288 70 69 6F 5F 	.LASF68:
+ 1338      6D 6F 64 65 
+ 1338      5F 70 69 6F 
+ 1338      5F 63 6F 6E 
+ 1338      74 72 6F 6C 
+ 1339                 		.ascii "C:\\CSR_uEnergy_SDK-2.3.0.31\\apps\\gatt_server\000"
+ 1340 0294 70 69 6F 5F 		.ident	"GCC: (GNU) 4.3.4 CSR version 22 for xap [1468380]"
+ 1340      6D 6F 64 65 
+ 1340      5F 75 61 72 
+ 1340      74 00 
+ 1341                 	...

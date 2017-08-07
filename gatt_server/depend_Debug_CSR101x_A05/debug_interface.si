@@ -1,0 +1,1387 @@
+   1                 		.file	"debug_interface.c"
+   2                 		.variant xap2+
+   3                 	
+   4                 		.small
+   5                 	
+   6                 		.section	.debug_abbrev,"",@progbits
+   7                 	.Ldebug_abbrev0:
+   8                 		.section	.debug_info,"",@progbits
+   9                 	.Ldebug_info0:
+  10                 		.section	.debug_line,"",@progbits
+  11                 	.Ldebug_line0:
+  12 0000 00 00 00 00 		.text
+  12      00 02 00 00 
+  12      00 00 01 01 
+  12      FB 0E 0D 00 
+  12      01 01 01 01 
+  13                 	.Ltext0:
+  14                 		.section	.text.itoa,"ax",@progbits
+  15                 		.type	itoa, @function
+  16                 	itoa:
+  17                 	.LFB2:
+  18                 		.file 1 "debug_interface.c"
+   0:debug_interface.c **** /******************************************************************************
+   1:debug_interface.c ****  *  Copyright Cambridge Silicon Radio Limited 2013-2014
+   2:debug_interface.c ****  *  Part of CSR uEnergy SDK 2.3.0
+   3:debug_interface.c ****  *  Application version 2.3.0.0
+   4:debug_interface.c ****  *
+   5:debug_interface.c ****  *  FILE
+   6:debug_interface.c ****  *      debug_interface.c
+   7:debug_interface.c ****  *
+   8:debug_interface.c ****  *  DESCRIPTION
+   9:debug_interface.c ****  *      This file contains implementation of the debug functions
+  10:debug_interface.c ****  *
+  11:debug_interface.c ****  *****************************************************************************/
+  12:debug_interface.c **** 
+  13:debug_interface.c **** /*============================================================================*
+  14:debug_interface.c ****  *  SDK Header Files
+  15:debug_interface.c ****  *============================================================================*/
+  16:debug_interface.c **** 
+  17:debug_interface.c **** #include <debug.h>          /* Simple host interface to the UART driver */
+  18:debug_interface.c **** #include <types.h>          /* Commonly used type definitions */
+  19:debug_interface.c **** #include <gatt_uuid.h>      /* Common Bluetooth UUIDs and macros */
+  20:debug_interface.c **** #include <mem.h>            /* Memory library */
+  21:debug_interface.c **** 
+  22:debug_interface.c **** /*============================================================================*
+  23:debug_interface.c ****  *  Local Header File
+  24:debug_interface.c ****  *============================================================================*/
+  25:debug_interface.c **** 
+  26:debug_interface.c **** #include "debug_interface.h"/* Interface to this file */
+  27:debug_interface.c **** #include "user_config.h"    /* User configuration */
+  28:debug_interface.c **** 
+  29:debug_interface.c **** #ifdef DEBUG_OUTPUT_ENABLED
+  30:debug_interface.c **** 
+  31:debug_interface.c **** /*============================================================================*
+  32:debug_interface.c ****  *  Private Definitions
+  33:debug_interface.c ****  *===========================================================================*/
+  34:debug_interface.c **** 
+  35:debug_interface.c **** /* Smallest buffer size required to hold longest 16-bit integer value */
+  36:debug_interface.c **** #define ITOA_BUFFER_SIZE 7
+  37:debug_interface.c **** 
+  38:debug_interface.c **** /*============================================================================*
+  39:debug_interface.c ****  *  Private Function Prototypes
+  40:debug_interface.c ****  *============================================================================*/
+  41:debug_interface.c **** 
+  42:debug_interface.c **** /* Convert decimal integer value to ASCII string */
+  43:debug_interface.c **** static uint8 itoa(int16 value, char *str);
+  44:debug_interface.c **** 
+  45:debug_interface.c **** /*============================================================================*
+  46:debug_interface.c ****  *  Private Function Implementations
+  47:debug_interface.c ****  *============================================================================*/
+  48:debug_interface.c **** 
+  49:debug_interface.c **** /*----------------------------------------------------------------------------*
+  50:debug_interface.c ****  *  NAME
+  51:debug_interface.c ****  *      itoa
+  52:debug_interface.c ****  *
+  53:debug_interface.c ****  *  DESCRIPTION
+  54:debug_interface.c ****  *      Convert a 16-bit signed integer decimal value into a string.
+  55:debug_interface.c ****  *
+  56:debug_interface.c ****  *  PARAMETERS
+  57:debug_interface.c ****  *      value [in]              Decimal value to convert
+  58:debug_interface.c ****  *      str [in]                Buffer into which to place string (must have
+  59:debug_interface.c ****  *                              room for at least ITOA_BUFFER_SIZE chars)
+  60:debug_interface.c ****  *
+  61:debug_interface.c ****  *  RETURNS
+  62:debug_interface.c ****  *      Length of the string.
+  63:debug_interface.c ****  *---------------------------------------------------------------------------*/
+  64:debug_interface.c **** static uint8 itoa(int16 value, char *str)
+  65:debug_interface.c **** {
+  19                 	r	#0x000e
+  20 0000 0E 0B       	.LCFI0:
+  21                 		st	AL,@(0x000a,Y)
+  22 0001 0A 27       		st	AH,@(0x000b,Y)
+  23 0002 0B 23       		.loc 1 67 0
+  66:debug_interface.c ****     uint8  i = ITOA_BUFFER_SIZE;    /* Index into buffer */
+  24                 	L,#0x0007
+  25 0003 07 14       		st	AL,@(0x0002,Y)
+  26 0004 02 27       		.loc 1 74 0
+  67:debug_interface.c ****     uint16 remainder;               /* Remaining value to convert */
+  68:debug_interface.c ****     char   buffer[ITOA_BUFFER_SIZE];/* Buffer for ASCII string */
+  69:debug_interface.c ****     
+  70:debug_interface.c ****     /* Initialise remainder. If value is negative convert remainder from 16-bit
+  71:debug_interface.c ****      * 2's complement negative value to 16-bit absolute value
+  72:debug_interface.c ****      */
+  73:debug_interface.c ****     remainder = (value < 0) ? ~value + 1 : value;
+  27                 		AL,@(0x000a,Y)
+  28 0005 0A 17       		st	AL,@(0x000c,Y)
+  29 0006 0C 27       		tst	@(0x000c,Y)
+  30 0007 0C 9B       		bpl	.L2
+  31 0008 00 00 00 00 		ld	X,@(0x000c,Y)
+  31      00 E8 
+  32 000b 0C 1B       		nadd	X,#0x0000
+  33 000c 00 78       		st	X,@(0x000c,Y)
+  34 000d 0C 2B       	.L2:
+  35                 		ld	AL,@(0x000c,Y)
+  36 000e 0C 17       		st	AL,@(0x0001,Y)
+  37 000f 01 27       		.loc 1 77 0
+  74:debug_interface.c **** 
+  75:debug_interface.c ****     /* Ensure the string is correctly terminated */    
+  76:debug_interface.c ****     buffer[--i] = '\0';
+  38                 	0002,Y)
+  39 0010 02 17       		ld	X,@$XAP_AL
+  40 0011 00 00 00 19 		add	X,#0xffff
+  41 0013 FF 38       		st	X,@(0x0002,Y)
+  42 0014 02 2B       		ld	AH,@(0x0002,Y)
+  43 0015 02 13       		ld	AL,@$XAP_UY
+  44 0016 00 00 00 15 		add	AL,#0x0003
+  45 0018 03 34       		ld	X,@$XAP_AL
+  46 0019 00 00 00 19 		add	X,@$XAP_AH
+  47 001b 00 00 00 39 		ld	AL,#0x0000
+  48 001d 00 14       		st	AL,@(0,X)
+  49 001e 00 26       	.L3:
+  50                 		.loc 1 83 0
+  77:debug_interface.c **** 
+  78:debug_interface.c ****     /* Loop at least once and until the whole value has been converted */
+  79:debug_interface.c ****     do
+  80:debug_interface.c ****     {
+  81:debug_interface.c ****         /* Convert the unit value into ASCII and store in the buffer */
+  82:debug_interface.c ****         buffer[--i] = (remainder % 10) + '0';
+  51                 	02,Y)
+  52 001f 02 17       		ld	X,@$XAP_AL
+  53 0020 00 00 00 19 		add	X,#0xffff
+  54 0022 FF 38       		st	X,@(0x0002,Y)
+  55 0023 02 2B       		ld	X,@(0x0002,Y)
+  56 0024 02 1B       		ld	AL,@(0x0001,Y)
+  57 0025 01 17       		ld	AH,#0x0000
+  58 0026 00 10       		udiv	#0x000a
+  59 0027 00 09 0A 94 		ld	AL,@$XAP_AH
+  60 0029 00 00 00 15 		ld	AH,@$XAP_AL
+  61 002b 00 00 00 11 		add	AH,#0x0030
+  62 002d 30 30       		ld	AL,@$XAP_UY
+  63 002e 00 00 00 15 		add	AL,#0x0003
+  64 0030 03 34       		add	X,@$XAP_AL
+  65 0031 00 00 00 39 		st	AH,@(0,X)
+  66 0033 00 22       		.loc 1 86 0
+  83:debug_interface.c ****         
+  84:debug_interface.c ****         /* Shift the value right one decimal */
+  85:debug_interface.c ****         remainder /= 10;
+  67                 	Y)
+  68 0034 01 17       		ld	AH,#0x0000
+  69 0035 00 10       		udiv	#0x000a
+  70 0036 00 09 0A 94 		st	AL,@(0x0001,Y)
+  71 0038 01 27       		.loc 1 87 0
+  86:debug_interface.c ****     } while (remainder > 0);
+  72                 	@(0x0001,Y)
+  73 0039 01 9B       		bne	.L3
+  74 003a 00 00 00 00 		.loc 1 90 0
+  74      00 F0 
+  87:debug_interface.c ****     
+  88:debug_interface.c ****     /* Prepend '-' if the value is negative */
+  89:debug_interface.c ****     if (value < 0)
+  75                 	t	@(0x000a,Y)
+  76 003d 0A 9B       		bpl	.L4
+  77 003e 00 00 00 00 		.loc 1 92 0
+  77      00 E8 
+  90:debug_interface.c ****     {
+  91:debug_interface.c ****         buffer[--i] = '-';
+  78                 		AL,@(0x0002,Y)
+  79 0041 02 17       		ld	X,@$XAP_AL
+  80 0042 00 00 00 19 		add	X,#0xffff
+  81 0044 FF 38       		st	X,@(0x0002,Y)
+  82 0045 02 2B       		ld	AH,@(0x0002,Y)
+  83 0046 02 13       		ld	AL,@$XAP_UY
+  84 0047 00 00 00 15 		add	AL,#0x0003
+  85 0049 03 34       		ld	X,@$XAP_AL
+  86 004a 00 00 00 19 		add	X,@$XAP_AH
+  87 004c 00 00 00 39 		ld	AL,#0x002d
+  88 004e 2D 14       		st	AL,@(0,X)
+  89 004f 00 26       	.L4:
+  90                 		.loc 1 96 0
+  92:debug_interface.c ****     }
+  93:debug_interface.c ****     
+  94:debug_interface.c ****     /* Copy the buffer into the return string, including NUL terminator */
+  95:debug_interface.c ****     MemCopy(str, buffer + i, ITOA_BUFFER_SIZE - i);
+  91                 	UY
+  92 0050 00 00 00 11 		add	AH,#0x0003
+  93 0052 03 30       		add	AH,@(0x0002,Y)
+  94 0053 02 33       		ld	AL,#0x0007
+  95 0054 07 14       		sub	AL,@(0x0002,Y)
+  96 0055 02 57       		st	AL,@(0,Y)
+  97 0056 00 27       		ld	AL,@(0x000b,Y)
+  98 0057 0B 17       		bsr	memcpy
+  99 0058 00 00 00 00 		.loc 1 99 0
+  99      00 9C 
+  96:debug_interface.c **** 
+  97:debug_interface.c ****     /* Return length of str, excluding NUL terminator (as per strlen) */
+  98:debug_interface.c ****     return (ITOA_BUFFER_SIZE - 1) - i;
+ 100                 	x0006
+ 101 005b 06 14       		sub	AL,@(0x0002,Y)
+ 102 005c 02 57       		.loc 1 100 0
+  99:debug_interface.c **** } /* itoa */
+ 103                 	ave	#0x000e
+ 104 005d 0E 0F       	.LFE2:
+ 105                 		.size	itoa, .-itoa
+ 106                 		.equ	__size_of_itoa,. - itoa
+ 107                 		.section	.text.DebugIfInit,"ax",@progbits
+ 108                 		.global	DebugIfInit
+ 109                 		.type	DebugIfInit, @function
+ 110                 	DebugIfInit:
+ 111                 	.LFB3:
+ 112                 		.loc 1 120 0
+ 100:debug_interface.c **** 
+ 101:debug_interface.c **** /*============================================================================*
+ 102:debug_interface.c ****  *  Public Function Implementations
+ 103:debug_interface.c ****  *============================================================================*/
+ 104:debug_interface.c **** 
+ 105:debug_interface.c **** /*----------------------------------------------------------------------------*
+ 106:debug_interface.c ****  *  NAME
+ 107:debug_interface.c ****  *      DebugIfInit
+ 108:debug_interface.c ****  *
+ 109:debug_interface.c ****  *  DESCRIPTION
+ 110:debug_interface.c ****  *      Initialise debug output.
+ 111:debug_interface.c ****  *
+ 112:debug_interface.c ****  *  PARAMETERS
+ 113:debug_interface.c ****  *      None
+ 114:debug_interface.c ****  *
+ 115:debug_interface.c ****  *  RETURNS
+ 116:debug_interface.c ****  *      Nothing
+ 117:debug_interface.c ****  *----------------------------------------------------------------------------*/
+ 118:debug_interface.c **** void DebugIfInit(void)
+ 119:debug_interface.c **** {
+ 113                 	0002
+ 114 0000 02 0B       	.LCFI1:
+ 115                 		.loc 1 122 0
+ 120:debug_interface.c ****     /* Initialise debug output */
+ 121:debug_interface.c ****     DebugInit(0, NULL, NULL);
+ 116                 		AL,#0x0000
+ 117 0001 00 14       		st	AL,@(0,Y)
+ 118 0002 00 27       		ld	AL,#0x0000
+ 119 0003 00 14       		ld	AH,#0x0000
+ 120 0004 00 10       		bsr	DebugInit
+ 121 0005 00 00 00 00 		.loc 1 123 0
+ 121      00 9C 
+ 122:debug_interface.c **** } /* DebugIfInit */
+ 122                 		#0x0002
+ 123 0008 02 0F       	.LFE3:
+ 124                 		.size	DebugIfInit, .-DebugIfInit
+ 125                 		.global	__size_of_DebugIfInit
+ 126                 		.equ	__size_of_DebugIfInit,. - DebugIfInit
+ 127                 		.rodata
+ 128                 	.LC0:
+ 129                 		.ascii ":\000"
+ 130 0000 00 3A 00 00 		.section	.text.DebugIfWriteBdAddress,"ax",@progbits
+ 131                 		.global	DebugIfWriteBdAddress
+ 132                 		.type	DebugIfWriteBdAddress, @function
+ 133                 	DebugIfWriteBdAddress:
+ 134                 	.LFB4:
+ 135                 		.loc 1 139 0
+ 123:debug_interface.c **** 
+ 124:debug_interface.c **** /*----------------------------------------------------------------------------*
+ 125:debug_interface.c ****  *  NAME
+ 126:debug_interface.c ****  *      DebugIfWriteBdAddress
+ 127:debug_interface.c ****  *
+ 128:debug_interface.c ****  *  DESCRIPTION
+ 129:debug_interface.c ****  *      Print out a Bluetooth address.
+ 130:debug_interface.c ****  *
+ 131:debug_interface.c ****  *  PARAMETERS
+ 132:debug_interface.c ****  *      address [in]            Bluetooth address to write to UART
+ 133:debug_interface.c ****  *
+ 134:debug_interface.c ****  *  RETURNS
+ 135:debug_interface.c ****  *      Nothing
+ 136:debug_interface.c ****  *---------------------------------------------------------------------------*/
+ 137:debug_interface.c **** void DebugIfWriteBdAddress(const TYPED_BD_ADDR_T *address)
+ 138:debug_interface.c **** {
+ 136                 	
+ 137 0000 0A 0B       	.LCFI2:
+ 138                 		st	AL,@(0,Y)
+ 139 0001 00 27       		.loc 1 140 0
+ 139:debug_interface.c ****     DebugWriteUint8(WORD_MSB(address->addr.nap));
+ 140                 		X,@(0,Y)
+ 141 0002 00 1B       		ld	AL,@(0x0004,X)
+ 142 0003 04 16       		ld	AH,@$XAP_AL
+ 143 0004 00 00 00 11 		lsr	#0x0008
+ 144 0006 00 09 08 A4 		ld	AL,@$XAP_AH
+ 145 0008 00 00 00 15 		bsr	DebugWriteUint8
+ 146 000a 00 00 00 00 		.loc 1 141 0
+ 146      00 9C 
+ 140:debug_interface.c ****     DebugWriteString(":");
+ 147                 	#.LC0
+ 148 000d 00 00 00 14 		bsr	DebugWriteString
+ 149 000f 00 00 00 00 		.loc 1 142 0
+ 149      00 9C 
+ 141:debug_interface.c ****     DebugWriteUint8(WORD_LSB(address->addr.nap));
+ 150                 		X,@(0,Y)
+ 151 0012 00 1B       		ld	AL,@(0x0004,X)
+ 152 0013 04 16       		and	AL,#0x00ff
+ 153 0014 01 00 FF C4 		bsr	DebugWriteUint8
+ 154 0016 00 00 00 00 		.loc 1 143 0
+ 154      00 9C 
+ 142:debug_interface.c ****     DebugWriteString(":");
+ 155                 	L,#.LC0
+ 156 0019 00 00 00 14 		bsr	DebugWriteString
+ 157 001b 00 00 00 00 		.loc 1 144 0
+ 157      00 9C 
+ 143:debug_interface.c ****     DebugWriteUint8(address->addr.uap);
+ 158                 		X,@(0,Y)
+ 159 001e 00 1B       		ld	AL,@(0x0003,X)
+ 160 001f 03 16       		bsr	DebugWriteUint8
+ 161 0020 00 00 00 00 		.loc 1 145 0
+ 161      00 9C 
+ 144:debug_interface.c ****     DebugWriteString(":");
+ 162                 	AL,#.LC0
+ 163 0023 00 00 00 14 		bsr	DebugWriteString
+ 164 0025 00 00 00 00 		.loc 1 146 0
+ 164      00 9C 
+ 145:debug_interface.c ****     DebugWriteUint8(WORD_LSB(address->addr.lap >> 16));
+ 165                 		X,@(0,Y)
+ 166 0028 00 1B       		ld	AL,@(0x0002,X)
+ 167 0029 02 16       		st	AL,@(0x0008,Y)
+ 168 002a 08 27       		ld	X,@(0x0001,X)
+ 169 002b 01 1A       		st	X,@(0x0007,Y)
+ 170 002c 07 2B       		ld	AL,@(0x0008,Y)
+ 171 002d 08 17       		ld	AH,@(0x0007,Y)
+ 172 002e 07 13       		lsr	#0x0010
+ 173 002f 00 09 10 A4 		; nop move AL <- AL Fix B-31148
+ 174                 		and	AL,#0x00ff
+ 175 0031 01 00 FF C4 		bsr	DebugWriteUint8
+ 176 0033 00 00 00 00 		.loc 1 147 0
+ 176      00 9C 
+ 146:debug_interface.c ****     DebugWriteString(":");
+ 177                 	
+ 178 0036 00 00 00 14 		bsr	DebugWriteString
+ 179 0038 00 00 00 00 		.loc 1 148 0
+ 179      00 9C 
+ 147:debug_interface.c ****     DebugWriteUint8(WORD_MSB(address->addr.lap));
+ 180                 	d	X,@(0,Y)
+ 181 003b 00 1B       		ld	AL,@(0x0002,X)
+ 182 003c 02 16       		st	AL,@(0x0006,Y)
+ 183 003d 06 27       		ld	X,@(0x0001,X)
+ 184 003e 01 1A       		st	X,@(0x0005,Y)
+ 185 003f 05 2B       		ld	X,@(0x0006,Y)
+ 186 0040 06 1B       		ld	AL,@$XAP_UXL
+ 187 0041 00 00 00 15 		ld	X,@(0x0005,Y)
+ 188 0043 05 1B       		ld	AH,@$XAP_UXL
+ 189 0044 00 00 00 11 		and	AL,#0xff00
+ 190 0046 FF 00 00 C4 		and	AH,#0x0000
+ 191 0048 00 C0       		st	AL,@(0x0004,Y)
+ 192 0049 04 27       		st	AH,@(0x0003,Y)
+ 193 004a 03 23       		ld	AL,@(0x0004,Y)
+ 194 004b 04 17       		ld	AH,@(0x0003,Y)
+ 195 004c 03 13       		lsr	#0x0008
+ 196 004d 00 09 08 A4 		; nop move AL <- AL Fix B-31148
+ 197                 		bsr	DebugWriteUint8
+ 198 004f 00 00 00 00 		.loc 1 149 0
+ 198      00 9C 
+ 148:debug_interface.c ****     DebugWriteString(":");
+ 199                 	ebugWriteString
+ 200 0052 00 00 00 14 		.loc 1 150 0
+ 201 0054 00 00 00 00 		ld	X,@(0,Y)
+ 201      00 9C 
+ 149:debug_interface.c ****     DebugWriteUint8(WORD_LSB(address->addr.lap));
+ 202                 		AL,@(0x0002,X)
+ 203 0057 00 1B       		st	AL,@(0x0002,Y)
+ 204 0058 02 16       		ld	X,@(0x0001,X)
+ 205 0059 02 27       		st	X,@(0x0001,Y)
+ 206 005a 01 1A       		ld	X,@(0x0002,Y)
+ 207 005b 01 2B       		ld	AL,@$XAP_UXL
+ 208 005c 02 1B       		and	AL,#0x00ff
+ 209 005d 00 00 00 15 		bsr	DebugWriteUint8
+ 210 005f 01 00 FF C4 		.loc 1 151 0
+ 211 0061 00 00 00 00 		leave	#0x000a
+ 211      00 9C 
+ 150:debug_interface.c **** } /* DebugIfWriteBdAddress */
+ 212                 	ize	DebugIfWriteBdAddress, .-DebugIfWriteBdAddress
+ 213 0064 0A 0F       		.global	__size_of_DebugIfWriteBdAddress
+ 214                 		.equ	__size_of_DebugIfWriteBdAddress,. - DebugIfWriteBdAddress
+ 215                 		.section	.text.DebugIfWriteInt,"ax",@progbits
+ 216                 		.global	DebugIfWriteInt
+ 217                 		.type	DebugIfWriteInt, @function
+ 218                 	DebugIfWriteInt:
+ 219                 	.LFB5:
+ 220                 		.loc 1 167 0
+ 221                 		enter	#0x0009
+ 222                 	.LCFI3:
+ 151:debug_interface.c **** 
+ 152:debug_interface.c **** /*----------------------------------------------------------------------------*
+ 153:debug_interface.c ****  *  NAME
+ 154:debug_interface.c ****  *      DebugIfWriteInt
+ 155:debug_interface.c ****  *
+ 156:debug_interface.c ****  *  DESCRIPTION
+ 157:debug_interface.c ****  *      Print out an integer value
+ 158:debug_interface.c ****  *
+ 159:debug_interface.c ****  *  PARAMETERS
+ 160:debug_interface.c ****  *      value [in]              Integer value to write to UART
+ 161:debug_interface.c ****  *
+ 162:debug_interface.c ****  *  RETURNS
+ 163:debug_interface.c ****  *      Nothing
+ 164:debug_interface.c ****  *---------------------------------------------------------------------------*/
+ 165:debug_interface.c **** void DebugIfWriteInt(int16 value)
+ 166:debug_interface.c **** {
+ 223                 	0007,Y)
+ 224 0000 09 0B       		.loc 1 170 0
+ 225                 		ld	AL,@(0x0007,Y)
+ 226 0001 07 27       		ld	AH,@$XAP_UY
+ 167:debug_interface.c ****     char valueString[ITOA_BUFFER_SIZE];
+ 168:debug_interface.c **** 
+ 169:debug_interface.c ****     itoa(value, valueString);
+ 227                 		itoa
+ 228 0002 07 17       		.loc 1 172 0
+ 229 0003 00 00 00 11 		ld	AL,@$XAP_UY
+ 230 0005 00 00 00 00 		bsr	DebugWriteString
+ 230      00 9C 
+ 170:debug_interface.c ****     
+ 171:debug_interface.c ****     DebugWriteString(valueString);
+ 231                 	c 1 173 0
+ 232 0008 00 00 00 15 		leave	#0x0009
+ 233 000a 00 00 00 00 	.LFE5:
+ 233      00 9C 
+ 172:debug_interface.c **** } /* DebugIfWriteInt */
+ 234                 	ize	DebugIfWriteInt, .-DebugIfWriteInt
+ 235 000d 09 0F       		.global	__size_of_DebugIfWriteInt
+ 236                 		.equ	__size_of_DebugIfWriteInt,. - DebugIfWriteInt
+ 237                 		.section	.text.DebugIfWriteUuid128,"ax",@progbits
+ 238                 		.global	DebugIfWriteUuid128
+ 239                 		.type	DebugIfWriteUuid128, @function
+ 240                 	DebugIfWriteUuid128:
+ 241                 	.LFB6:
+ 242                 		.loc 1 189 0
+ 243                 		enter	#0x0003
+ 244                 	.LCFI4:
+ 173:debug_interface.c **** 
+ 174:debug_interface.c **** /*----------------------------------------------------------------------------*
+ 175:debug_interface.c ****  *  NAME
+ 176:debug_interface.c ****  *      DebugIfWriteUuid128
+ 177:debug_interface.c ****  *
+ 178:debug_interface.c ****  *  DESCRIPTION
+ 179:debug_interface.c ****  *      Print out a 128-bit UUID
+ 180:debug_interface.c ****  *
+ 181:debug_interface.c ****  *  PARAMETERS
+ 182:debug_interface.c ****  *      uuid [in]               Buffer containing 128-bit UUID to write to UART
+ 183:debug_interface.c ****  *
+ 184:debug_interface.c ****  *  RETURNS
+ 185:debug_interface.c ****  *      Nothing
+ 186:debug_interface.c ****  *---------------------------------------------------------------------------*/
+ 187:debug_interface.c **** void DebugIfWriteUuid128(const uint8 *uuid)
+ 188:debug_interface.c **** {
+ 245                 	0001,Y)
+ 246 0000 03 0B       		.loc 1 192 0
+ 247                 		ld	AL,#0x0000
+ 248 0001 01 27       		st	AL,@(0,Y)
+ 189:debug_interface.c ****     uint8 i;
+ 190:debug_interface.c ****     
+ 191:debug_interface.c ****     for(i = 0; i < 16; i++)
+ 249                 		.L13
+ 250 0002 00 14       	.L14:
+ 251 0003 00 27       		.loc 1 194 0
+ 252 0004 00 00 00 00 		ld	AL,@(0x0001,Y)
+ 252      00 E0 
+ 253                 		ld	X,@$XAP_AL
+ 192:debug_interface.c ****     {
+ 193:debug_interface.c ****         DebugWriteUint8(uuid[i]);
+ 254                 	X,@(0,Y)
+ 255 0007 01 17       		ld	AL,@(0,X)
+ 256 0008 00 00 00 19 		bsr	DebugWriteUint8
+ 257 000a 00 3B       		.loc 1 192 0
+ 258 000b 00 16       		ld	AL,@(0,Y)
+ 259 000c 00 00 00 00 		ld	X,@$XAP_AL
+ 259      00 9C 
+ 192:debug_interface.c ****     {
+ 260                 		add	X,#0x0001
+ 261 000f 00 17       		st	X,@(0,Y)
+ 262 0010 00 00 00 19 	.L13:
+ 263 0012 01 38       		ld	AL,@(0,Y)
+ 264 0013 00 2B       		cmp	AL,#0x000f
+ 265                 		bcz	.L14
+ 266 0014 00 17       		.loc 1 196 0
+ 267 0015 0F 84       		leave	#0x0003
+ 268 0016 00 00 00 00 	.LFE6:
+ 268      00 2C 
+ 194:debug_interface.c ****     }
+ 195:debug_interface.c **** } /* DebugIfWriteUuid128 */
+ 269                 	riteUuid128, .-DebugIfWriteUuid128
+ 270 0019 03 0F       		.global	__size_of_DebugIfWriteUuid128
+ 271                 		.equ	__size_of_DebugIfWriteUuid128,. - DebugIfWriteUuid128
+ 272                 		.section	.debug_frame,"",@progbits
+ 273                 	.Lframe0:
+ 274                 		.4byte	.LECIE0-.LSCIE0
+ 275                 	.LSCIE0:
+ 276                 		.4byte	0xffffffff
+ 277 0000 00 00 00 00 		.1byte	0x1
+ 278                 		.ascii "\000"
+ 279 0002 FF FF FF FF 		.1byte	0x1
+ 280 0004 01          		.1byte	0x7f
+ 281 0004 00          		.1byte	0x3
+ 282 0005 01          		.1byte	0xc
+ 283 0005 7F          		.1byte	0x5
+ 284 0006 03          		.1byte	0x0
+ 285 0006 0C          		.p2align	2
+ 286 0007 05          	.LECIE0:
+ 287 0007 00          	.LSFDE0:
+ 288                 		.4byte	.LEFDE0-.LASFDE0
+ 289                 	.LASFDE0:
+ 290                 		.4byte	.Lframe0
+ 291 0008 00 00 00 00 		.4byte	.LFB2
+ 292                 		.4byte	.LFE2-.LFB2
+ 293 000a 00 00 00 00 		.1byte	0x4
+ 294 000c 00 00 00 00 		.4byte	.LCFI0-.LFB2
+ 295 000e 00 00 00 00 		.1byte	0xe
+ 296 0010 41          		.1byte	0xe
+ 297                 		.1byte	0x83
+ 298 0010 0E          		.1byte	0x1
+ 299 0011 0E          		.p2align	2
+ 300 0011 83          	.LEFDE0:
+ 301 0012 01          	.LSFDE2:
+ 302 0012 00 00 00    		.4byte	.LEFDE2-.LASFDE2
+ 303                 	.LASFDE2:
+ 304                 		.4byte	.Lframe0
+ 305 0014 00 00 00 00 		.4byte	.LFB3
+ 306                 		.4byte	.LFE3-.LFB3
+ 307 0016 00 00 00 00 		.1byte	0x4
+ 308 0018 00 00 00 00 		.4byte	.LCFI1-.LFB3
+ 309 001a 00 00 00 00 		.1byte	0xe
+ 310 001c 41          		.1byte	0x2
+ 311                 		.1byte	0x83
+ 312 001c 0E          		.1byte	0x1
+ 313 001d 02          		.p2align	2
+ 314 001d 83          	.LEFDE2:
+ 315 001e 01          	.LSFDE4:
+ 316 001e 00 00 00    		.4byte	.LEFDE4-.LASFDE4
+ 317                 	.LASFDE4:
+ 318                 		.4byte	.Lframe0
+ 319 0020 00 00 00 00 		.4byte	.LFB4
+ 320                 		.4byte	.LFE4-.LFB4
+ 321 0022 00 00 00 00 		.1byte	0x4
+ 322 0024 00 00 00 00 		.4byte	.LCFI2-.LFB4
+ 323 0026 00 00 00 00 		.1byte	0xe
+ 324 0028 41          		.1byte	0xa
+ 325                 		.1byte	0x83
+ 326 0028 0E          		.1byte	0x1
+ 327 0029 0A          		.p2align	2
+ 328 0029 83          	.LEFDE4:
+ 329 002a 01          	.LSFDE6:
+ 330 002a 00 00 00    		.4byte	.LEFDE6-.LASFDE6
+ 331                 	.LASFDE6:
+ 332                 		.4byte	.Lframe0
+ 333 002c 00 00 00 00 		.4byte	.LFB5
+ 334                 		.4byte	.LFE5-.LFB5
+ 335 002e 00 00 00 00 		.1byte	0x4
+ 336 0030 00 00 00 00 		.4byte	.LCFI3-.LFB5
+ 337 0032 00 00 00 00 		.1byte	0xe
+ 338 0034 41          		.1byte	0x9
+ 339                 		.1byte	0x83
+ 340 0034 0E          		.1byte	0x1
+ 341 0035 09          		.p2align	2
+ 342 0035 83          	.LEFDE6:
+ 343 0036 01          	.LSFDE8:
+ 344 0036 00 00 00    		.4byte	.LEFDE8-.LASFDE8
+ 345                 	.LASFDE8:
+ 346                 		.4byte	.Lframe0
+ 347 0038 00 00 00 00 		.4byte	.LFB6
+ 348                 		.4byte	.LFE6-.LFB6
+ 349 003a 00 00 00 00 		.1byte	0x4
+ 350 003c 00 00 00 00 		.4byte	.LCFI4-.LFB6
+ 351 003e 00 00 00 00 		.1byte	0xe
+ 352 0040 41          		.1byte	0x3
+ 353                 		.1byte	0x83
+ 354 0040 0E          		.1byte	0x1
+ 355 0041 03          		.p2align	2
+ 356 0041 83          	.LEFDE8:
+ 357 0042 01          		.text
+ 358 0042 00 00 00    	.Letext0:
+ 359                 		.section	.debug_loc,"",@progbits
+ 360                 	.Ldebug_loc0:
+ 361                 	.LLST0:
+ 362                 		.4byte	.LFB2
+ 363                 		.4byte	.LCFI0
+ 364                 		.2byte	0x1
+ 365 0000 00 00 00 00 		.1byte	0x55
+ 366 0002 00 00 00 00 		.4byte	.LCFI0
+ 367 0004 00 01       		.4byte	.LFE2
+ 368 0005 55          		.2byte	0x2
+ 369 0005 00 00 00 00 		.1byte	0x75
+ 370 0007 00 00 00 00 		.1byte	0xe
+ 371 0009 00 02       		.4byte	0x0
+ 372 000a 75          		.4byte	0x0
+ 373 000b 0E          	.LLST1:
+ 374 000b 00 00 00 00 		.4byte	.LFB3
+ 375 000d 00 00 00 00 		.4byte	.LCFI1
+ 376                 		.2byte	0x1
+ 377 000f 00 00 00 00 		.1byte	0x55
+ 378 0011 00 00 00 00 		.4byte	.LCFI1
+ 379 0013 00 01       		.4byte	.LFE3
+ 380 0014 55          		.2byte	0x2
+ 381 0015 00 00 00 00 		.1byte	0x75
+ 382 0017 00 00 00 00 		.1byte	0x2
+ 383 0019 00 02       		.4byte	0x0
+ 384 001a 75          		.4byte	0x0
+ 385 001a 02          	.LLST2:
+ 386 001b 00 00 00 00 		.4byte	.LFB4
+ 387 001d 00 00 00 00 		.4byte	.LCFI2
+ 388                 		.2byte	0x1
+ 389 001f 00 00 00 00 		.1byte	0x55
+ 390 0021 00 00 00 00 		.4byte	.LCFI2
+ 391 0023 00 01       		.4byte	.LFE4
+ 392 0024 55          		.2byte	0x2
+ 393 0024 00 00 00 00 		.1byte	0x75
+ 394 0026 00 00 00 00 		.1byte	0xa
+ 395 0028 00 02       		.4byte	0x0
+ 396 0029 75          		.4byte	0x0
+ 397 002a 0A          	.LLST3:
+ 398 002a 00 00 00 00 		.4byte	.LFB5
+ 399 002c 00 00 00 00 		.4byte	.LCFI3
+ 400                 		.2byte	0x1
+ 401 002e 00 00 00 00 		.1byte	0x55
+ 402 0030 00 00 00 00 		.4byte	.LCFI3
+ 403 0032 00 01       		.4byte	.LFE5
+ 404 0033 55          		.2byte	0x2
+ 405 0034 00 00 00 00 		.1byte	0x75
+ 406 0036 00 00 00 00 		.1byte	0x9
+ 407 0038 00 02       		.4byte	0x0
+ 408 0039 75          		.4byte	0x0
+ 409 0039 09          	.LLST4:
+ 410 003a 00 00 00 00 		.4byte	.LFB6
+ 411 003c 00 00 00 00 		.4byte	.LCFI4
+ 412                 		.2byte	0x1
+ 413 003e 00 00 00 00 		.1byte	0x55
+ 414 0040 00 00 00 00 		.4byte	.LCFI4
+ 415 0042 00 01       		.4byte	.LFE6
+ 416 0043 55          		.2byte	0x2
+ 417 0043 00 00 00 00 		.1byte	0x75
+ 418 0045 00 00 00 00 		.1byte	0x3
+ 419 0047 00 02       		.4byte	0x0
+ 420 0048 75          		.4byte	0x0
+ 421 0049 03          		.file 2 "C:/CSR_uEnergy_SDK-2.3.0.31/tools/include/CSR101x_A05/types.h"
+ 422 0049 00 00 00 00 		.file 3 "C:/CSR_uEnergy_SDK-2.3.0.31/tools/include/CSR101x_A05/bluetooth.h"
+ 423 004b 00 00 00 00 		.section	.debug_info
+ 424                 		.4byte	0x23a
+ 425                 		.2byte	0x2
+ 426                 		.4byte	.Ldebug_abbrev0
+ 427 0000 00 00 02 3A 		.1byte	0x4
+ 428 0002 00 02       		.1byte	0x1
+ 429 0003 00 00 00 00 		.4byte	.LASF26
+ 430 0005 04          		.1byte	0x1
+ 431 0005 01          		.4byte	.LASF27
+ 432 0006 00 00 00 00 		.4byte	.LASF28
+ 433 0008 01          		.4byte	0x0
+ 434 0008 00 00 00 00 		.4byte	0x0
+ 435 000a 00 00 00 00 		.4byte	.Ldebug_ranges0+0x0
+ 436 000c 00 00 00 00 		.4byte	.Ldebug_line0
+ 437 000e 00 00 00 00 		.1byte	0x2
+ 438 0010 00 00 00 00 		.4byte	.LASF0
+ 439 0012 00 00 00 00 		.1byte	0x2
+ 440 0014 02          		.1byte	0x1e
+ 441 0015 00 00 00 00 		.4byte	0x34
+ 442 0017 02          		.1byte	0x3
+ 443 0017 1E          		.1byte	0x2
+ 444 0018 00 00 00 34 		.1byte	0x8
+ 445 001a 03          		.4byte	.LASF2
+ 446 001a 02          		.1byte	0x2
+ 447 001b 08          		.4byte	.LASF1
+ 448 001b 00 00 00 00 		.1byte	0x2
+ 449 001d 02          		.1byte	0x1f
+ 450 001e 00 00 00 00 		.4byte	0x46
+ 451 0020 02          		.1byte	0x3
+ 452 0020 1F          		.1byte	0x2
+ 453 0021 00 00 00 46 		.1byte	0x7
+ 454 0023 03          		.4byte	.LASF3
+ 455 0023 02          		.1byte	0x2
+ 456 0024 07          		.4byte	.LASF4
+ 457 0024 00 00 00 00 		.1byte	0x2
+ 458 0026 02          		.1byte	0x20
+ 459 0027 00 00 00 00 		.4byte	0x58
+ 460 0029 02          		.1byte	0x3
+ 461 0029 20          		.1byte	0x4
+ 462 002a 00 00 00 58 		.1byte	0x7
+ 463 002c 03          		.4byte	.LASF5
+ 464 002c 04          		.1byte	0x2
+ 465 002d 07          		.4byte	.LASF6
+ 466 002d 00 00 00 00 		.1byte	0x2
+ 467 002f 02          		.1byte	0x21
+ 468 0030 00 00 00 00 		.4byte	0x4d
+ 469 0032 02          		.1byte	0x3
+ 470 0032 21          		.1byte	0x2
+ 471 0033 00 00 00 4D 		.1byte	0x6
+ 472 0035 03          		.4byte	.LASF7
+ 473 0035 02          		.1byte	0x2
+ 474 0036 06          		.4byte	.LASF8
+ 475 0036 00 00 00 00 		.1byte	0x2
+ 476 0038 02          		.1byte	0x24
+ 477 0039 00 00 00 00 		.4byte	0x7c
+ 478 003b 02          		.1byte	0x3
+ 479 003b 24          		.1byte	0x2
+ 480 003c 00 00 00 7C 		.1byte	0x5
+ 481 003e 03          		.4byte	.LASF9
+ 482 003e 02          		.1byte	0x3
+ 483 003f 05          		.1byte	0x4
+ 484 003f 00 00 00 00 		.1byte	0x5
+ 485 0041 03          		.4byte	.LASF10
+ 486 0042 04          		.1byte	0x3
+ 487 0042 05          		.1byte	0x2
+ 488 0043 00 00 00 00 		.1byte	0x7
+ 489 0045 03          		.4byte	.LASF11
+ 490 0045 02          		.1byte	0x4
+ 491 0046 07          		.1byte	0x8
+ 492 0046 00 00 00 00 		.1byte	0x3
+ 493 0048 04          		.1byte	0x33
+ 494 0049 08          		.4byte	0xc4
+ 495 0049 03          		.1byte	0x5
+ 496 004a 33          		.ascii "lap\000"
+ 497 004a 00 00 00 C4 		.1byte	0x3
+ 498 004c 05          		.1byte	0x34
+ 499 004d 6C 61 70 00 		.4byte	0x5f
+ 500 004f 03          		.1byte	0x2
+ 501 004f 34          		.1byte	0x23
+ 502 0050 00 00 00 5F 		.1byte	0x0
+ 503 0052 02          		.1byte	0x5
+ 504 0052 23          		.ascii "uap\000"
+ 505 0053 00          		.1byte	0x3
+ 506 0053 05          		.1byte	0x35
+ 507 0054 75 61 70 00 		.4byte	0x29
+ 508 0056 03          		.1byte	0x2
+ 509 0056 35          		.1byte	0x23
+ 510 0057 00 00 00 29 		.1byte	0x2
+ 511 0059 02          		.1byte	0x5
+ 512 0059 23          		.ascii "nap\000"
+ 513 005a 02          		.1byte	0x3
+ 514 005a 05          		.1byte	0x36
+ 515 005b 6E 61 70 00 		.4byte	0x3b
+ 516 005d 03          		.1byte	0x2
+ 517 005d 36          		.1byte	0x23
+ 518 005e 00 00 00 3B 		.1byte	0x3
+ 519 0060 02          		.1byte	0x0
+ 520 0060 23          		.1byte	0x2
+ 521 0061 03          		.4byte	.LASF12
+ 522 0061 00          		.1byte	0x3
+ 523 0062 02          		.1byte	0x37
+ 524 0062 00 00 00 00 		.4byte	0x91
+ 525 0064 03          		.1byte	0x4
+ 526 0065 37          		.1byte	0xa
+ 527 0065 00 00 00 91 		.1byte	0x3
+ 528 0067 04          		.1byte	0x3b
+ 529 0068 0A          		.4byte	0xf4
+ 530 0068 03          		.1byte	0x6
+ 531 0069 3B          		.4byte	.LASF13
+ 532 0069 00 00 00 F4 		.1byte	0x3
+ 533 006b 06          		.1byte	0x3c
+ 534 006c 00 00 00 00 		.4byte	0x3b
+ 535 006e 03          		.1byte	0x2
+ 536 006e 3C          		.1byte	0x23
+ 537 006f 00 00 00 3B 		.1byte	0x0
+ 538 0071 02          		.1byte	0x6
+ 539 0071 23          		.4byte	.LASF14
+ 540 0072 00          		.1byte	0x3
+ 541 0072 06          		.1byte	0x3d
+ 542 0073 00 00 00 00 		.4byte	0xc4
+ 543 0075 03          		.1byte	0x2
+ 544 0075 3D          		.1byte	0x23
+ 545 0076 00 00 00 C4 		.1byte	0x1
+ 546 0078 02          		.1byte	0x0
+ 547 0078 23          		.1byte	0x2
+ 548 0079 01          		.4byte	.LASF15
+ 549 0079 00          		.1byte	0x3
+ 550 007a 02          		.1byte	0x3e
+ 551 007a 00 00 00 00 		.4byte	0xcf
+ 552 007c 03          		.1byte	0x7
+ 553 007d 3E          		.1byte	0x2
+ 554 007d 00 00 00 CF 		.1byte	0x7
+ 555 007f 07          		.1byte	0x8
+ 556 0080 02          		.4byte	.LASF29
+ 557 0080 07          		.1byte	0x1
+ 558 0081 08          		.1byte	0x42
+ 559 0081 00 00 00 00 		.1byte	0x1
+ 560 0083 01          		.4byte	0x29
+ 561 0084 42          		.4byte	.LFB2
+ 562 0084 01          		.4byte	.LFE2
+ 563 0085 00 00 00 29 		.4byte	.LLST0
+ 564 0087 00 00 00 00 		.4byte	0x163
+ 565 0089 00 00 00 00 		.1byte	0x9
+ 566 008b 00 00 00 00 		.4byte	.LASF16
+ 567 008d 00 00 01 63 		.1byte	0x1
+ 568 008f 09          		.1byte	0x41
+ 569 008f 00 00 00 00 		.4byte	0x71
+ 570 0091 01          		.1byte	0x2
+ 571 0092 41          		.1byte	0x76
+ 572 0092 00 00 00 71 		.1byte	0xa
+ 573 0094 02          		.1byte	0xa
+ 574 0095 76          		.ascii "str\000"
+ 575 0095 0A          		.1byte	0x1
+ 576 0096 0A          		.1byte	0x41
+ 577 0096 73 74 72 00 		.4byte	0x163
+ 578 0098 01          		.1byte	0x2
+ 579 0099 41          		.1byte	0x76
+ 580 0099 00 00 01 63 		.1byte	0xb
+ 581 009b 02          		.1byte	0xb
+ 582 009c 76          		.ascii "i\000"
+ 583 009c 0B          		.1byte	0x1
+ 584 009d 0B          		.1byte	0x43
+ 585 009d 69 00       		.4byte	0x29
+ 586 009e 01          		.1byte	0x2
+ 587 009f 43          		.1byte	0x76
+ 588 009f 00 00 00 29 		.1byte	0x2
+ 589 00a1 02          		.1byte	0xc
+ 590 00a2 76          		.4byte	.LASF17
+ 591 00a2 02          		.1byte	0x1
+ 592 00a3 0C          		.1byte	0x44
+ 593 00a3 00 00 00 00 		.4byte	0x3b
+ 594 00a5 01          		.1byte	0x2
+ 595 00a6 44          		.1byte	0x76
+ 596 00a6 00 00 00 3B 		.1byte	0x1
+ 597 00a8 02          		.1byte	0xc
+ 598 00a9 76          		.4byte	.LASF18
+ 599 00a9 01          		.1byte	0x1
+ 600 00aa 0C          		.1byte	0x45
+ 601 00aa 00 00 00 00 		.4byte	0x170
+ 602 00ac 01          		.1byte	0x2
+ 603 00ad 45          		.1byte	0x76
+ 604 00ad 00 00 01 70 		.1byte	0x3
+ 605 00af 02          		.1byte	0x0
+ 606 00b0 76          		.1byte	0xd
+ 607 00b0 03          		.1byte	0x2
+ 608 00b1 00          		.4byte	0x169
+ 609 00b1 0D          		.1byte	0x3
+ 610 00b2 02          		.1byte	0x2
+ 611 00b2 00 00 01 69 		.1byte	0x8
+ 612 00b4 03          		.4byte	.LASF19
+ 613 00b5 02          		.1byte	0xe
+ 614 00b5 08          		.4byte	0x169
+ 615 00b6 00 00 00 00 		.4byte	0x180
+ 616 00b8 0E          		.1byte	0xf
+ 617 00b8 00 00 01 69 		.4byte	0xff
+ 618 00ba 00 00 01 80 		.1byte	0x6
+ 619 00bc 0F          		.1byte	0x0
+ 620 00bd 00 00 00 FF 		.1byte	0x10
+ 621 00bf 06          		.1byte	0x1
+ 622 00bf 00          		.4byte	.LASF30
+ 623 00c0 10          		.1byte	0x1
+ 624 00c0 01          		.1byte	0x78
+ 625 00c1 00 00 00 00 		.1byte	0x1
+ 626 00c3 01          		.4byte	.LFB3
+ 627 00c3 78          		.4byte	.LFE3
+ 628 00c4 01          		.4byte	.LLST1
+ 629 00c4 00 00 00 00 		.1byte	0x11
+ 630 00c6 00 00 00 00 		.1byte	0x1
+ 631 00c8 00 00 00 00 		.4byte	.LASF21
+ 632 00ca 11          		.1byte	0x1
+ 633 00cb 01          		.1byte	0x8b
+ 634 00cb 00 00 00 00 		.1byte	0x1
+ 635 00cd 01          		.4byte	.LFB4
+ 636 00ce 8B          		.4byte	.LFE4
+ 637 00ce 01          		.4byte	.LLST2
+ 638 00cf 00 00 00 00 		.4byte	0x1bd
+ 639 00d1 00 00 00 00 		.1byte	0x9
+ 640 00d3 00 00 00 00 		.4byte	.LASF20
+ 641 00d5 00 00 01 BD 		.1byte	0x1
+ 642 00d7 09          		.1byte	0x8a
+ 643 00d7 00 00 00 00 		.4byte	0x1bd
+ 644 00d9 01          		.1byte	0x2
+ 645 00da 8A          		.1byte	0x76
+ 646 00da 00 00 01 BD 		.1byte	0x0
+ 647 00dc 02          		.1byte	0x0
+ 648 00dd 76          		.1byte	0xd
+ 649 00dd 00          		.1byte	0x2
+ 650 00de 00          		.4byte	0x1c3
+ 651 00de 0D          		.1byte	0x12
+ 652 00df 02          		.4byte	0xf4
+ 653 00df 00 00 01 C3 		.1byte	0x11
+ 654 00e1 12          		.1byte	0x1
+ 655 00e2 00 00 00 F4 		.4byte	.LASF22
+ 656 00e4 11          		.1byte	0x1
+ 657 00e4 01          		.1byte	0xa7
+ 658 00e5 00 00 00 00 		.1byte	0x1
+ 659 00e7 01          		.4byte	.LFB5
+ 660 00e7 A7          		.4byte	.LFE5
+ 661 00e8 01          		.4byte	.LLST3
+ 662 00e8 00 00 00 00 		.4byte	0x1fe
+ 663 00ea 00 00 00 00 		.1byte	0x9
+ 664 00ec 00 00 00 00 		.4byte	.LASF16
+ 665 00ee 00 00 01 FE 		.1byte	0x1
+ 666 00f0 09          		.1byte	0xa6
+ 667 00f1 00 00 00 00 		.4byte	0x71
+ 668 00f3 01          		.1byte	0x2
+ 669 00f3 A6          		.1byte	0x76
+ 670 00f4 00 00 00 71 		.1byte	0x7
+ 671 00f6 02          		.1byte	0xc
+ 672 00f6 76          		.4byte	.LASF23
+ 673 00f7 07          		.1byte	0x1
+ 674 00f7 0C          		.1byte	0xa8
+ 675 00f8 00 00 00 00 		.4byte	0x170
+ 676 00fa 01          		.1byte	0x2
+ 677 00fa A8          		.1byte	0x76
+ 678 00fb 00 00 01 70 		.1byte	0x0
+ 679 00fd 02          		.1byte	0x0
+ 680 00fd 76          		.1byte	0x11
+ 681 00fe 00          		.1byte	0x1
+ 682 00fe 00          		.4byte	.LASF24
+ 683 00ff 11          		.1byte	0x1
+ 684 00ff 01          		.1byte	0xbd
+ 685 0100 00 00 00 00 		.1byte	0x1
+ 686 0102 01          		.4byte	.LFB6
+ 687 0102 BD          		.4byte	.LFE6
+ 688 0103 01          		.4byte	.LLST4
+ 689 0103 00 00 00 00 		.4byte	0x232
+ 690 0105 00 00 00 00 		.1byte	0x9
+ 691 0107 00 00 00 00 		.4byte	.LASF25
+ 692 0109 00 00 02 32 		.1byte	0x1
+ 693 010b 09          		.1byte	0xbc
+ 694 010c 00 00 00 00 		.4byte	0x232
+ 695 010e 01          		.1byte	0x2
+ 696 010e BC          		.1byte	0x76
+ 697 010f 00 00 02 32 		.1byte	0x1
+ 698 0111 02          		.1byte	0xb
+ 699 0111 76          		.ascii "i\000"
+ 700 0112 01          		.1byte	0x1
+ 701 0112 0B          		.1byte	0xbe
+ 702 0113 69 00       		.4byte	0x29
+ 703 0114 01          		.1byte	0x2
+ 704 0114 BE          		.1byte	0x76
+ 705 0115 00 00 00 29 		.1byte	0x0
+ 706 0117 02          		.1byte	0x0
+ 707 0117 76          		.1byte	0xd
+ 708 0118 00          		.1byte	0x2
+ 709 0118 00          		.4byte	0x238
+ 710 0119 0D          		.1byte	0x12
+ 711 0119 02          		.4byte	0x29
+ 712 011a 00 00 02 38 		.1byte	0x0
+ 713 011c 12          		.section	.debug_abbrev
+ 714 011c 00 00 00 29 		.1byte	0x1
+ 715 011e 00          		.1byte	0x11
+ 716                 		.1byte	0x1
+ 717 0000 01          		.1byte	0x25
+ 718 0000 11          		.1byte	0xe
+ 719 0001 01          		.1byte	0x13
+ 720 0001 25          		.1byte	0xb
+ 721 0002 0E          		.1byte	0x3
+ 722 0002 13          		.1byte	0xe
+ 723 0003 0B          		.1byte	0x1b
+ 724 0003 03          		.1byte	0xe
+ 725 0004 0E          		.1byte	0x11
+ 726 0004 1B          		.1byte	0x1
+ 727 0005 0E          		.1byte	0x52
+ 728 0005 11          		.1byte	0x1
+ 729 0006 01          		.1byte	0x55
+ 730 0006 52          		.1byte	0x6
+ 731 0007 01          		.1byte	0x10
+ 732 0007 55          		.1byte	0x6
+ 733 0008 06          		.1byte	0x0
+ 734 0008 10          		.1byte	0x0
+ 735 0009 06          		.1byte	0x2
+ 736 0009 00          		.1byte	0x16
+ 737 000a 00          		.1byte	0x0
+ 738 000a 02          		.1byte	0x3
+ 739 000b 16          		.1byte	0xe
+ 740 000b 00          		.1byte	0x3a
+ 741 000c 03          		.1byte	0xb
+ 742 000c 0E          		.1byte	0x3b
+ 743 000d 3A          		.1byte	0xb
+ 744 000d 0B          		.1byte	0x49
+ 745 000e 3B          		.1byte	0x13
+ 746 000e 0B          		.1byte	0x0
+ 747 000f 49          		.1byte	0x0
+ 748 000f 13          		.1byte	0x3
+ 749 0010 00          		.1byte	0x24
+ 750 0010 00          		.1byte	0x0
+ 751 0011 03          		.1byte	0xb
+ 752 0011 24          		.1byte	0xb
+ 753 0012 00          		.1byte	0x3e
+ 754 0012 0B          		.1byte	0xb
+ 755 0013 0B          		.1byte	0x3
+ 756 0013 3E          		.1byte	0xe
+ 757 0014 0B          		.1byte	0x0
+ 758 0014 03          		.1byte	0x0
+ 759 0015 0E          		.1byte	0x4
+ 760 0015 00          		.1byte	0x13
+ 761 0016 00          		.1byte	0x1
+ 762 0016 04          		.1byte	0xb
+ 763 0017 13          		.1byte	0xb
+ 764 0017 01          		.1byte	0x3a
+ 765 0018 0B          		.1byte	0xb
+ 766 0018 0B          		.1byte	0x3b
+ 767 0019 3A          		.1byte	0xb
+ 768 0019 0B          		.1byte	0x1
+ 769 001a 3B          		.1byte	0x13
+ 770 001a 0B          		.1byte	0x0
+ 771 001b 01          		.1byte	0x0
+ 772 001b 13          		.1byte	0x5
+ 773 001c 00          		.1byte	0xd
+ 774 001c 00          		.1byte	0x0
+ 775 001d 05          		.1byte	0x3
+ 776 001d 0D          		.1byte	0x8
+ 777 001e 00          		.1byte	0x3a
+ 778 001e 03          		.1byte	0xb
+ 779 001f 08          		.1byte	0x3b
+ 780 001f 3A          		.1byte	0xb
+ 781 0020 0B          		.1byte	0x49
+ 782 0020 3B          		.1byte	0x13
+ 783 0021 0B          		.1byte	0x38
+ 784 0021 49          		.1byte	0xa
+ 785 0022 13          		.1byte	0x0
+ 786 0022 38          		.1byte	0x0
+ 787 0023 0A          		.1byte	0x6
+ 788 0023 00          		.1byte	0xd
+ 789 0024 00          		.1byte	0x0
+ 790 0024 06          		.1byte	0x3
+ 791 0025 0D          		.1byte	0xe
+ 792 0025 00          		.1byte	0x3a
+ 793 0026 03          		.1byte	0xb
+ 794 0026 0E          		.1byte	0x3b
+ 795 0027 3A          		.1byte	0xb
+ 796 0027 0B          		.1byte	0x49
+ 797 0028 3B          		.1byte	0x13
+ 798 0028 0B          		.1byte	0x38
+ 799 0029 49          		.1byte	0xa
+ 800 0029 13          		.1byte	0x0
+ 801 002a 38          		.1byte	0x0
+ 802 002a 0A          		.1byte	0x7
+ 803 002b 00          		.1byte	0x24
+ 804 002b 00          		.1byte	0x0
+ 805 002c 07          		.1byte	0xb
+ 806 002c 24          		.1byte	0xb
+ 807 002d 00          		.1byte	0x3e
+ 808 002d 0B          		.1byte	0xb
+ 809 002e 0B          		.1byte	0x0
+ 810 002e 3E          		.1byte	0x0
+ 811 002f 0B          		.1byte	0x8
+ 812 002f 00          		.1byte	0x2e
+ 813 0030 00          		.1byte	0x1
+ 814 0030 08          		.1byte	0x3
+ 815 0031 2E          		.1byte	0xe
+ 816 0031 01          		.1byte	0x3a
+ 817 0032 03          		.1byte	0xb
+ 818 0032 0E          		.1byte	0x3b
+ 819 0033 3A          		.1byte	0xb
+ 820 0033 0B          		.1byte	0x27
+ 821 0034 3B          		.1byte	0xc
+ 822 0034 0B          		.1byte	0x49
+ 823 0035 27          		.1byte	0x13
+ 824 0035 0C          		.1byte	0x11
+ 825 0036 49          		.1byte	0x1
+ 826 0036 13          		.1byte	0x12
+ 827 0037 11          		.1byte	0x1
+ 828 0037 01          		.1byte	0x40
+ 829 0038 12          		.1byte	0x6
+ 830 0038 01          		.1byte	0x1
+ 831 0039 40          		.1byte	0x13
+ 832 0039 06          		.1byte	0x0
+ 833 003a 01          		.1byte	0x0
+ 834 003a 13          		.1byte	0x9
+ 835 003b 00          		.1byte	0x5
+ 836 003b 00          		.1byte	0x0
+ 837 003c 09          		.1byte	0x3
+ 838 003c 05          		.1byte	0xe
+ 839 003d 00          		.1byte	0x3a
+ 840 003d 03          		.1byte	0xb
+ 841 003e 0E          		.1byte	0x3b
+ 842 003e 3A          		.1byte	0xb
+ 843 003f 0B          		.1byte	0x49
+ 844 003f 3B          		.1byte	0x13
+ 845 0040 0B          		.1byte	0x2
+ 846 0040 49          		.1byte	0xa
+ 847 0041 13          		.1byte	0x0
+ 848 0041 02          		.1byte	0x0
+ 849 0042 0A          		.1byte	0xa
+ 850 0042 00          		.1byte	0x5
+ 851 0043 00          		.1byte	0x0
+ 852 0043 0A          		.1byte	0x3
+ 853 0044 05          		.1byte	0x8
+ 854 0044 00          		.1byte	0x3a
+ 855 0045 03          		.1byte	0xb
+ 856 0045 08          		.1byte	0x3b
+ 857 0046 3A          		.1byte	0xb
+ 858 0046 0B          		.1byte	0x49
+ 859 0047 3B          		.1byte	0x13
+ 860 0047 0B          		.1byte	0x2
+ 861 0048 49          		.1byte	0xa
+ 862 0048 13          		.1byte	0x0
+ 863 0049 02          		.1byte	0x0
+ 864 0049 0A          		.1byte	0xb
+ 865 004a 00          		.1byte	0x34
+ 866 004a 00          		.1byte	0x0
+ 867 004b 0B          		.1byte	0x3
+ 868 004b 34          		.1byte	0x8
+ 869 004c 00          		.1byte	0x3a
+ 870 004c 03          		.1byte	0xb
+ 871 004d 08          		.1byte	0x3b
+ 872 004d 3A          		.1byte	0xb
+ 873 004e 0B          		.1byte	0x49
+ 874 004e 3B          		.1byte	0x13
+ 875 004f 0B          		.1byte	0x2
+ 876 004f 49          		.1byte	0xa
+ 877 0050 13          		.1byte	0x0
+ 878 0050 02          		.1byte	0x0
+ 879 0051 0A          		.1byte	0xc
+ 880 0051 00          		.1byte	0x34
+ 881 0052 00          		.1byte	0x0
+ 882 0052 0C          		.1byte	0x3
+ 883 0053 34          		.1byte	0xe
+ 884 0053 00          		.1byte	0x3a
+ 885 0054 03          		.1byte	0xb
+ 886 0054 0E          		.1byte	0x3b
+ 887 0055 3A          		.1byte	0xb
+ 888 0055 0B          		.1byte	0x49
+ 889 0056 3B          		.1byte	0x13
+ 890 0056 0B          		.1byte	0x2
+ 891 0057 49          		.1byte	0xa
+ 892 0057 13          		.1byte	0x0
+ 893 0058 02          		.1byte	0x0
+ 894 0058 0A          		.1byte	0xd
+ 895 0059 00          		.1byte	0xf
+ 896 0059 00          		.1byte	0x0
+ 897 005a 0D          		.1byte	0xb
+ 898 005a 0F          		.1byte	0xb
+ 899 005b 00          		.1byte	0x49
+ 900 005b 0B          		.1byte	0x13
+ 901 005c 0B          		.1byte	0x0
+ 902 005c 49          		.1byte	0x0
+ 903 005d 13          		.1byte	0xe
+ 904 005d 00          		.1byte	0x1
+ 905 005e 00          		.1byte	0x1
+ 906 005e 0E          		.1byte	0x49
+ 907 005f 01          		.1byte	0x13
+ 908 005f 01          		.1byte	0x1
+ 909 0060 49          		.1byte	0x13
+ 910 0060 13          		.1byte	0x0
+ 911 0061 01          		.1byte	0x0
+ 912 0061 13          		.1byte	0xf
+ 913 0062 00          		.1byte	0x21
+ 914 0062 00          		.1byte	0x0
+ 915 0063 0F          		.1byte	0x49
+ 916 0063 21          		.1byte	0x13
+ 917 0064 00          		.1byte	0x2f
+ 918 0064 49          		.1byte	0xb
+ 919 0065 13          		.1byte	0x0
+ 920 0065 2F          		.1byte	0x0
+ 921 0066 0B          		.1byte	0x10
+ 922 0066 00          		.1byte	0x2e
+ 923 0067 00          		.1byte	0x0
+ 924 0067 10          		.1byte	0x3f
+ 925 0068 2E          		.1byte	0xc
+ 926 0068 00          		.1byte	0x3
+ 927 0069 3F          		.1byte	0xe
+ 928 0069 0C          		.1byte	0x3a
+ 929 006a 03          		.1byte	0xb
+ 930 006a 0E          		.1byte	0x3b
+ 931 006b 3A          		.1byte	0xb
+ 932 006b 0B          		.1byte	0x27
+ 933 006c 3B          		.1byte	0xc
+ 934 006c 0B          		.1byte	0x11
+ 935 006d 27          		.1byte	0x1
+ 936 006d 0C          		.1byte	0x12
+ 937 006e 11          		.1byte	0x1
+ 938 006e 01          		.1byte	0x40
+ 939 006f 12          		.1byte	0x6
+ 940 006f 01          		.1byte	0x0
+ 941 0070 40          		.1byte	0x0
+ 942 0070 06          		.1byte	0x11
+ 943 0071 00          		.1byte	0x2e
+ 944 0071 00          		.1byte	0x1
+ 945 0072 11          		.1byte	0x3f
+ 946 0072 2E          		.1byte	0xc
+ 947 0073 01          		.1byte	0x3
+ 948 0073 3F          		.1byte	0xe
+ 949 0074 0C          		.1byte	0x3a
+ 950 0074 03          		.1byte	0xb
+ 951 0075 0E          		.1byte	0x3b
+ 952 0075 3A          		.1byte	0xb
+ 953 0076 0B          		.1byte	0x27
+ 954 0076 3B          		.1byte	0xc
+ 955 0077 0B          		.1byte	0x11
+ 956 0077 27          		.1byte	0x1
+ 957 0078 0C          		.1byte	0x12
+ 958 0078 11          		.1byte	0x1
+ 959 0079 01          		.1byte	0x40
+ 960 0079 12          		.1byte	0x6
+ 961 007a 01          		.1byte	0x1
+ 962 007a 40          		.1byte	0x13
+ 963 007b 06          		.1byte	0x0
+ 964 007b 01          		.1byte	0x0
+ 965 007c 13          		.1byte	0x12
+ 966 007c 00          		.1byte	0x26
+ 967 007d 00          		.1byte	0x0
+ 968 007d 12          		.1byte	0x49
+ 969 007e 26          		.1byte	0x13
+ 970 007e 00          		.1byte	0x0
+ 971 007f 49          		.1byte	0x0
+ 972 007f 13          		.1byte	0x0
+ 973 0080 00          		.section	.debug_pubnames,"",@progbits
+ 974 0080 00          		.4byte	0x64
+ 975 0081 00          		.2byte	0x2
+ 976                 		.4byte	.Ldebug_info0
+ 977 0000 00 00 00 64 		.4byte	0x23e
+ 978 0002 00 02       		.4byte	0x180
+ 979 0003 00 00 00 00 		.ascii "DebugIfInit\000"
+ 980 0005 00 00 02 3E 		.4byte	0x195
+ 981 0007 00 00 01 80 		.ascii "DebugIfWriteBdAddress\000"
+ 982 0009 44 65 62 75 		.4byte	0x1c8
+ 982      67 49 66 49 
+ 982      6E 69 74 00 
+ 983 000f 00 00 01 95 		.ascii "DebugIfWriteInt\000"
+ 984 0011 44 65 62 75 		.4byte	0x1fe
+ 984      67 49 66 57 
+ 984      72 69 74 65 
+ 984      42 64 41 64 
+ 984      64 72 65 73 
+ 985 001c 00 00 01 C8 		.ascii "DebugIfWriteUuid128\000"
+ 986 001e 44 65 62 75 		.4byte	0x0
+ 986      67 49 66 57 
+ 986      72 69 74 65 
+ 986      49 6E 74 00 
+ 987 0026 00 00 01 FE 		.section	.debug_aranges,"",@progbits
+ 988 0028 44 65 62 75 		.4byte	0x3c
+ 988      67 49 66 57 
+ 988      72 69 74 65 
+ 988      55 75 69 64 
+ 988      31 32 38 00 
+ 989 0032 00 00 00 00 		.2byte	0x2
+ 990                 		.4byte	.Ldebug_info0
+ 991 0000 00 00 00 3C 		.1byte	0x4
+ 992 0002 00 02       		.1byte	0x0
+ 993 0003 00 00 00 00 		.2byte	0x0
+ 994 0005 04          		.2byte	0x0
+ 995 0005 00          		.4byte	.LFB2
+ 996 0006 00 00       		.4byte	.LFE2-.LFB2
+ 997 0007 00 00       		.4byte	.LFB3
+ 998 0008 00 00 00 00 		.4byte	.LFE3-.LFB3
+ 999 000a 00 00 00 00 		.4byte	.LFB4
+ 1000 000c 00 00 00 00 		.4byte	.LFE4-.LFB4
+ 1001 000e 00 00 00 00 		.4byte	.LFB5
+ 1002 0010 00 00 00 00 		.4byte	.LFE5-.LFB5
+ 1003 0012 00 00 00 00 		.4byte	.LFB6
+ 1004 0014 00 00 00 00 		.4byte	.LFE6-.LFB6
+ 1005 0016 00 00 00 00 		.4byte	0x0
+ 1006 0018 00 00 00 00 		.4byte	0x0
+ 1007 001a 00 00 00 00 		.section	.debug_ranges,"",@progbits
+ 1008 001c 00 00 00 00 	.Ldebug_ranges0:
+ 1009 001e 00 00 00 00 		.4byte	.Ltext0
+ 1010                 		.4byte	.Letext0
+ 1011                 		.4byte	.LFB2
+ 1012 0000 00 00 00 00 		.4byte	.LFE2
+ 1013 0002 00 00 00 00 		.4byte	.LFB3
+ 1014 0004 00 00 00 00 		.4byte	.LFE3
+ 1015 0006 00 00 00 00 		.4byte	.LFB4
+ 1016 0008 00 00 00 00 		.4byte	.LFE4
+ 1017 000a 00 00 00 00 		.4byte	.LFB5
+ 1018 000c 00 00 00 00 		.4byte	.LFE5
+ 1019 000e 00 00 00 00 		.4byte	.LFB6
+ 1020 0010 00 00 00 00 		.4byte	.LFE6
+ 1021 0012 00 00 00 00 		.4byte	0x0
+ 1022 0014 00 00 00 00 		.4byte	0x0
+ 1023 0016 00 00 00 00 		.section	.debug_str,"MS",@progbits,1
+ 1024 0018 00 00 00 00 	.LASF6:
+ 1025 001a 00 00 00 00 		.ascii "uint24\000"
+ 1026                 	.LASF23:
+ 1027                 		.ascii "valueString\000"
+ 1028 0000 75 69 6E 74 	.LASF15:
+ 1028      32 34 00 
+ 1029                 		.ascii "TYPED_BD_ADDR_T\000"
+ 1030 0003 76 61 6C 75 	.LASF30:
+ 1030      65 53 74 72 
+ 1030      69 6E 67 00 
+ 1031                 		.ascii "DebugIfInit\000"
+ 1032 0009 54 59 50 45 	.LASF16:
+ 1032      44 5F 42 44 
+ 1032      5F 41 44 44 
+ 1032      52 5F 54 00 
+ 1033                 		.ascii "value\000"
+ 1034 0011 44 65 62 75 	.LASF3:
+ 1034      67 49 66 49 
+ 1034      6E 69 74 00 
+ 1035                 		.ascii "short unsigned int\000"
+ 1036 0017 76 61 6C 75 	.LASF29:
+ 1036      65 00 
+ 1037                 		.ascii "itoa\000"
+ 1038 001a 73 68 6F 72 	.LASF2:
+ 1038      74 20 75 6E 
+ 1038      73 69 67 6E 
+ 1038      65 64 20 69 
+ 1038      6E 74 00 
+ 1039                 		.ascii "unsigned char\000"
+ 1040 0024 69 74 6F 61 	.LASF8:
+ 1040      00 
+ 1041                 		.ascii "int16\000"
+ 1042 0026 75 6E 73 69 	.LASF5:
+ 1042      67 6E 65 64 
+ 1042      20 63 68 61 
+ 1042      72 00 
+ 1043                 		.ascii "long unsigned int\000"
+ 1044 002d 69 6E 74 31 	.LASF14:
+ 1044      36 00 
+ 1045                 		.ascii "addr\000"
+ 1046 0030 6C 6F 6E 67 	.LASF27:
+ 1046      20 75 6E 73 
+ 1046      69 67 6E 65 
+ 1046      64 20 69 6E 
+ 1046      74 00 
+ 1047                 		.ascii "debug_interface.c\000"
+ 1048 0039 61 64 64 72 	.LASF21:
+ 1048      00 
+ 1049                 		.ascii "DebugIfWriteBdAddress\000"
+ 1050 003c 64 65 62 75 	.LASF1:
+ 1050      67 5F 69 6E 
+ 1050      74 65 72 66 
+ 1050      61 63 65 2E 
+ 1050      63 00 
+ 1051                 		.ascii "uint16\000"
+ 1052 0045 44 65 62 75 	.LASF26:
+ 1052      67 49 66 57 
+ 1052      72 69 74 65 
+ 1052      42 64 41 64 
+ 1052      64 72 65 73 
+ 1053                 		.ascii "GNU C 4.3.4 CSR version 22 for xap [1468380]\000"
+ 1054 0050 75 69 6E 74 	.LASF4:
+ 1054      31 36 00 
+ 1055                 		.ascii "uint32\000"
+ 1056 0053 47 4E 55 20 	.LASF11:
+ 1056      43 20 34 2E 
+ 1056      33 2E 34 20 
+ 1056      43 53 52 20 
+ 1056      76 65 72 73 
+ 1057                 		.ascii "unsigned int\000"
+ 1058 006a 75 69 6E 74 	.LASF25:
+ 1058      33 32 00 
+ 1059                 		.ascii "uuid\000"
+ 1060 006d 75 6E 73 69 	.LASF20:
+ 1060      67 6E 65 64 
+ 1060      20 69 6E 74 
+ 1060      00 
+ 1061                 		.ascii "address\000"
+ 1062 0074 75 75 69 64 	.LASF19:
+ 1062      00 
+ 1063                 		.ascii "char\000"
+ 1064 0076 61 64 64 72 	.LASF22:
+ 1064      65 73 73 00 
+ 1065                 		.ascii "DebugIfWriteInt\000"
+ 1066 007a 63 68 61 72 	.LASF24:
+ 1066      00 
+ 1067                 		.ascii "DebugIfWriteUuid128\000"
+ 1068 007d 44 65 62 75 	.LASF12:
+ 1068      67 49 66 57 
+ 1068      72 69 74 65 
+ 1068      49 6E 74 00 
+ 1069                 		.ascii "BD_ADDR_T\000"
+ 1070 0085 44 65 62 75 	.LASF13:
+ 1070      67 49 66 57 
+ 1070      72 69 74 65 
+ 1070      55 75 69 64 
+ 1070      31 32 38 00 
+ 1071                 		.ascii "type\000"
+ 1072 008f 42 44 5F 41 	.LASF9:
+ 1072      44 44 52 5F 
+ 1072      54 00 
+ 1073                 		.ascii "short int\000"
+ 1074 0094 74 79 70 65 	.LASF18:
+ 1074      00 
+ 1075                 		.ascii "buffer\000"
+ 1076 0096 73 68 6F 72 	.LASF0:
+ 1076      74 20 69 6E 
+ 1076      74 00 
+ 1077                 		.ascii "uint8\000"
+ 1078 009b 62 75 66 66 	.LASF28:
+ 1078      65 72 00 
+ 1079                 		.ascii "C:\\CSR_uEnergy_SDK-2.3.0.31\\apps\\gatt_server\000"
+ 1080 009f 75 69 6E 74 	.LASF10:
+ 1080      38 00 
+ 1081                 		.ascii "long int\000"
+ 1082 00a2 43 3A 5C 43 	.LASF17:
+ 1082      53 52 5F 75 
+ 1082      45 6E 65 72 
+ 1082      67 79 5F 53 
+ 1082      44 4B 2D 32 
+ 1083                 		.ascii "remainder\000"
+ 1084 00b8 6C 6F 6E 67 	.LASF7:
+ 1084      20 69 6E 74 
+ 1084      00 
+ 1085                 		.ascii "signed char\000"
+ 1086 00bd 72 65 6D 61 		.ident	"GCC: (GNU) 4.3.4 CSR version 22 for xap [1468380]"
+ 1086      69 6E 64 65 
+ 1086      72 00 
+ 1087                 	...
